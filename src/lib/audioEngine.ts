@@ -1,4 +1,4 @@
-// Pure Web Audio API procedural synthesizer for Lagos Life 3D
+// Pure Web Audio API procedural synthesizer for GameRP (NoPixel V // Eko City)
 // Zero external asset downloads required, instant playback!
 
 class LagosAudioEngine {
@@ -6,10 +6,16 @@ class LagosAudioEngine {
   public isMuted: boolean = false;
   private musicInterval: NodeJS.Timeout | null = null;
   public isMusicPlaying: boolean = false;
+  private engineOsc: OscillatorNode | null = null;
+  private engineSubOsc: OscillatorNode | null = null;
+  private engineFilter: BiquadFilterNode | null = null;
+  private engineGain: GainNode | null = null;
 
   private initCtx() {
     if (!this.ctx && typeof window !== 'undefined') {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
         this.ctx = new AudioCtx();
       }
@@ -34,13 +40,11 @@ class LagosAudioEngine {
     osc1.frequency.setValueAtTime(370, t); // F#4
     osc2.frequency.setValueAtTime(466, t); // Bb4
 
-    // Staccato two-tone danfo honk
     gain.gain.setValueAtTime(0, t);
     gain.gain.linearRampToValueAtTime(0.18, t + 0.04);
     gain.gain.setValueAtTime(0.18, t + 0.15);
     gain.gain.linearRampToValueAtTime(0, t + 0.18);
 
-    // Second honk
     gain.gain.setValueAtTime(0.18, t + 0.24);
     gain.gain.linearRampToValueAtTime(0, t + 0.42);
 
@@ -52,6 +56,173 @@ class LagosAudioEngine {
     osc2.start(t);
     osc1.stop(t + 0.45);
     osc2.stop(t + 0.45);
+  }
+
+  public playPoliceSiren() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(650, t);
+    osc.frequency.linearRampToValueAtTime(1150, t + 0.35);
+    osc.frequency.linearRampToValueAtTime(650, t + 0.7);
+
+    gain.gain.setValueAtTime(0.15, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.72);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.75);
+  }
+
+  public playPhoneRing() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    // Modern iPhone/NoPixel marimba-style chord arpeggio
+    const notes = [659.25, 880, 987.77, 1318.51];
+    notes.forEach((freq, idx) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const start = t + idx * 0.09;
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.16, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.25);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(start);
+      osc.stop(start + 0.26);
+    });
+  }
+
+  public playSmsChime() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1046.5, t); // C6
+    osc.frequency.setValueAtTime(1318.51, t + 0.09); // E6
+
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.16, t + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.32);
+  }
+
+  public playRadioClick() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1800, t);
+    osc.frequency.setValueAtTime(1200, t + 0.03);
+
+    gain.gain.setValueAtTime(0.08, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.08);
+  }
+
+  public playSeatbeltChime() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(740, t);
+    osc.frequency.setValueAtTime(880, t + 0.08);
+
+    gain.gain.setValueAtTime(0.12, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.26);
+  }
+
+  public playHackBeep(success: boolean = true) {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = success ? 'sine' : 'sawtooth';
+    osc.frequency.setValueAtTime(success ? 1100 : 220, t);
+
+    gain.gain.setValueAtTime(0.14, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.15);
+  }
+
+  public playDispatchAlert() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    [880, 660, 880].forEach((freq, i) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const start = t + i * 0.11;
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.14, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.1);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.11);
+    });
   }
 
   public playCashEarn() {
@@ -84,8 +255,7 @@ class LagosAudioEngine {
     if (!this.ctx) return;
 
     const t = this.ctx.currentTime;
-    // Ascending celebratory triad: C5 - E5 - G5 - C6
-    const freqs = [523.25, 659.25, 783.99, 1046.50];
+    const freqs = [523.25, 659.25, 783.99, 1046.5];
     freqs.forEach((freq, idx) => {
       if (!this.ctx) return;
       const osc = this.ctx.createOscillator();
@@ -113,7 +283,6 @@ class LagosAudioEngine {
     if (!this.ctx) return;
 
     const t = this.ctx.currentTime;
-    // Power down pitch drop
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
@@ -209,10 +378,8 @@ class LagosAudioEngine {
       osc.start(t);
       osc.stop(t + 0.15);
     } else {
-      // Shaker
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
-      osc.type = 'highpass' as unknown as OscillatorType;
       osc.type = 'square';
       osc.frequency.setValueAtTime(1200, t);
       gain.gain.setValueAtTime(0.05, t);
@@ -240,10 +407,7 @@ class LagosAudioEngine {
     this.isMusicPlaying = true;
 
     let step = 0;
-    // 108 BPM Afrobeats 16-step rhythm pattern
     const stepDurationMs = (60 / 108 / 4) * 1000;
-
-    // Bass notes in F minor (F, Ab, Bb, C)
     const bassFreqs = [87.31, 87.31, 103.83, 116.54, 130.81, 87.31, 103.83, 116.54];
 
     this.musicInterval = setInterval(() => {
@@ -252,7 +416,6 @@ class LagosAudioEngine {
 
       const t = this.ctx.currentTime;
 
-      // Classic Lagos Afrobeats log-drum syncopation (steps 0, 3, 6, 10, 12)
       if (step === 0 || step === 6 || step === 10) {
         this.playDrumBeat('kick');
       }
@@ -263,7 +426,6 @@ class LagosAudioEngine {
         this.playDrumBeat('shaker');
       }
 
-      // Marimba/Log-drum bass note on syncopated accents
       if (step === 0 || step === 3 || step === 8 || step === 11) {
         const bassOsc = this.ctx.createOscillator();
         const bassGain = this.ctx.createGain();
@@ -290,6 +452,97 @@ class LagosAudioEngine {
       this.musicInterval = null;
     }
     this.isMusicPlaying = false;
+  }
+
+  public setEngine(active: boolean, speedPct: number) {
+    if (!active || this.isMuted) {
+      if (this.engineGain && this.ctx) {
+        this.engineGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.08);
+      }
+      return;
+    }
+    this.initCtx();
+    if (!this.ctx) return;
+
+    if (!this.engineOsc || !this.engineSubOsc || !this.engineFilter || !this.engineGain) {
+      this.engineOsc = this.ctx.createOscillator();
+      this.engineSubOsc = this.ctx.createOscillator();
+      this.engineFilter = this.ctx.createBiquadFilter();
+      this.engineGain = this.ctx.createGain();
+
+      this.engineOsc.type = 'sawtooth';
+      this.engineSubOsc.type = 'triangle';
+      this.engineFilter.type = 'lowpass';
+      this.engineFilter.frequency.value = 260;
+      this.engineGain.gain.value = 0;
+
+      this.engineOsc.connect(this.engineFilter);
+      this.engineSubOsc.connect(this.engineFilter);
+      this.engineFilter.connect(this.engineGain);
+      this.engineGain.connect(this.ctx.destination);
+
+      this.engineOsc.start();
+      this.engineSubOsc.start();
+    }
+
+    const t = this.ctx.currentTime;
+    const clamped = Math.max(0, Math.min(100, speedPct)) / 100;
+    // Simulate 5-gear RPM sawtooth curve so shifting feels alive
+    const gearSaw = (clamped * 3.8) % 1;
+    const rpmNorm = clamped < 0.03 ? 0.08 : 0.22 + gearSaw * 0.65 + clamped * 0.25;
+    const baseFreq = 44 + rpmNorm * 115;
+
+    this.engineOsc.frequency.setTargetAtTime(baseFreq, t, 0.06);
+    this.engineSubOsc.frequency.setTargetAtTime(baseFreq * 0.5, t, 0.06);
+    this.engineFilter.frequency.setTargetAtTime(180 + rpmNorm * 520, t, 0.08);
+    this.engineGain.gain.setTargetAtTime(0.035 + clamped * 0.045, t, 0.08);
+  }
+
+  public playCrash(intensity: number = 0.6) {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const clamped = Math.max(0.15, Math.min(1, intensity));
+
+    // Low body thud
+    const osc = this.ctx.createOscillator();
+    const oscGain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(140 * clamped + 50, t);
+    osc.frequency.exponentialRampToValueAtTime(28, t + 0.26);
+    oscGain.gain.setValueAtTime(0.32 * clamped, t);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    osc.connect(oscGain);
+    oscGain.connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.3);
+
+    // Metallic crunch noise burst
+    const duration = 0.22 + clamped * 0.18;
+    const bufferSize = Math.floor(this.ctx.sampleRate * duration);
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 1.8);
+    }
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(650 + clamped * 900, t);
+    filter.Q.setValueAtTime(1.1, t);
+
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(0.28 * clamped, t);
+    nGain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+
+    noise.connect(filter);
+    filter.connect(nGain);
+    nGain.connect(this.ctx.destination);
+    noise.start(t);
   }
 }
 

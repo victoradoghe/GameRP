@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { LagosWorld3D } from '@/components/game/LagosWorld3D';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { PhoneIncoming, PhoneOff, HeartPulse, Users, MapPin, X } from 'lucide-react';
+import { LagosWorld3D, VehicleAction } from '@/components/game/LagosWorld3D';
 import { GameHUD } from '@/components/game/GameHUD';
 import { EkoPhone } from '@/components/game/EkoPhone';
 import { CharacterCustomizer } from '@/components/game/CharacterCustomizer';
@@ -11,32 +12,171 @@ import { TechBroMiniGame } from '@/components/game/TechBroMiniGame';
 import { AfrobeatsMiniGame } from '@/components/game/AfrobeatsMiniGame';
 import { AmalaModal } from '@/components/game/AmalaModal';
 import { QuiloxModal } from '@/components/game/QuiloxModal';
+import { NoPixelInventoryModal } from '@/components/game/NoPixelInventoryModal';
+import { NoPixelRadialMenu } from '@/components/game/NoPixelRadialMenu';
+import { NoPixelHeistModal } from '@/components/game/NoPixelHeistModal';
+import { RandomEventModal } from '@/components/game/RandomEventModal';
+import { NoPixelCityMapModal } from '@/components/game/NoPixelCityMapModal';
+import { BennysCustomsModal } from '@/components/game/BennysCustomsModal';
+import { PedInteractionModal } from '@/components/game/PedInteractionModal';
+import { BuildingInteriorModal } from '@/components/game/BuildingInteriorModal';
 import {
   PlayerStats,
   Vitals,
   LagosDistrict,
+  CityId,
   NotificationItem,
+  WorldRealtimeState,
+  InventoryItem,
+  PhoneContact,
+  RandomLifeEvent,
+  Emote,
+  Weather,
+  MapTarget,
+  ActiveMission,
+  JobKind,
+  ChatLine,
 } from '@/lib/types';
 import {
-  INITIAL_NEPO_PLAYER,
   INITIAL_LAPO_PLAYER,
   INITIAL_VITALS,
+  DEFAULT_INVENTORY_ITEMS,
+  PHONE_CONTACTS,
+  ALL_LIFE_EVENTS,
+  DISTRICTS,
+  getDistrictsForCity,
+  LAPTOP_MODELS_CATALOG,
+  SERVER_PLAYERS,
+  OOC_CHATTER,
+  SPAWN_POINTS,
 } from '@/lib/gameState';
+import { generateAddresses } from '@/lib/cityLayout';
 import { audioEngine } from '@/lib/audioEngine';
 
+const VALID_EMOTES: Emote[] = [
+  'none',
+  'wave',
+  'dance',
+  'handsup',
+  'sit',
+  'pushups',
+  'salute',
+  'facepalm',
+];
+
+const RACE_CHECKPOINTS = [
+  { x: -60, z: -20, label: 'Checkpoint 1/4 • Marina Corner' },
+  { x: -60, z: 60, label: 'Checkpoint 2/4 • Ikeja North Loop' },
+  { x: 60, z: 60, label: 'Checkpoint 3/4 • Lekki Expressway' },
+  { x: 60, z: -20, label: 'Checkpoint 4/4 • Victoria Finish Line' },
+];
+
 export default function LagosLifeGamePage() {
-  // Player & Game State
+  // Core Player & Vitals State
   const [player, setPlayer] = useState<PlayerStats>(INITIAL_LAPO_PLAYER);
+  const addresses = useMemo(() => generateAddresses(player.activeCity || 'lagos'), [player.activeCity]);
   const [vitals, setVitals] = useState<Vitals>(INITIAL_VITALS);
-  const [currentDistrict, setCurrentDistrict] = useState<LagosDistrict>('shitta');
-  const [timeHour, setTimeHour] = useState<number>(14); // 2:00 PM
+  const [timeOfDay, setTimeOfDay] = useState<number>(19.5); // Golden dusk / neon transition
+  const [weather, setWeather] = useState<Weather>('clear');
   const [isNepaActive, setIsNepaActive] = useState<boolean>(true);
   const [isAudioMuted, setIsAudioMuted] = useState<boolean>(false);
   const [isPlayingMusic, setIsPlayingMusic] = useState<boolean>(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
-  // Modals Visibility
+  // World & Character States
+  const [wantedStars, setWantedStars] = useState<number>(0);
+  const [emote, setEmote] = useState<Emote>('none');
+  const [meText, setMeText] = useState<{ text: string; ts: number } | null>(null);
+  const [voiceMode, setVoiceMode] = useState<'whisper' | 'normal' | 'shout'>('normal');
+  const [isRadioOn, setIsRadioOn] = useState<boolean>(true);
+  const [cameraMode, setCameraMode] = useState<'chase' | 'isometric' | 'hood'>('chase');
+  const [altHeld, setAltHeld] = useState<boolean>(false);
+
+  // Navigation, Missions & World Triggers
+  const [activeMission, setActiveMission] = useState<ActiveMission | null>(null);
+  const [waypoint, setWaypoint] = useState<MapTarget | null>(null);
+  const [teleportRequest, setTeleportRequest] = useState<{
+    x: number;
+    z: number;
+    ts: number;
+  } | null>(null);
+  const [spawnVehicleRequest, setSpawnVehicleRequest] = useState<{
+    id: string;
+    timestamp: number;
+  } | null>(null);
+  const [vehicleControlTrigger, setVehicleControlTrigger] = useState<{
+    action: VehicleAction;
+    timestamp: number;
+  } | null>(null);
+  const [tuneVehicleRequest, setTuneVehicleRequest] = useState<{
+    color?: string;
+    repair?: boolean;
+    refuel?: boolean;
+    boostLevel?: number;
+    ts: number;
+  } | null>(null);
+
+  // RP / OOC Chat State
+  const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
+  const [chatLines, setChatLines] = useState<ChatLine[]>([
+    {
+      id: 'c-init-1',
+      kind: 'system',
+      author: 'SYSTEM',
+      text: 'Welcome to NoPixel V // Eko City! Click the 3D world to look around, [M] Phone, [F1] Emotes/Menu.',
+      ts: Date.now(),
+    },
+    {
+      id: 'c-init-2',
+      kind: 'ooc',
+      author: 'OfficerBalogun',
+      text: 'PD units 10-8 patrolling Broad Street. Drive safe citizens.',
+      ts: Date.now(),
+    },
+  ]);
+
+  // Action Progress Bar & Live Events
+  const [actionProgress, setActionProgress] = useState<{ label: string; pct: number } | null>(
+    null
+  );
+  const [incomingCaller, setIncomingCaller] = useState<PhoneContact | null>(null);
+  const [activeRandomEvent, setActiveRandomEvent] = useState<RandomLifeEvent | null>(null);
+
+  // Real-time 3D World Telemetry
+  const [worldState, setWorldState] = useState<WorldRealtimeState>({
+    x: 0,
+    z: 16,
+    heading: Math.PI,
+    cameraYaw: Math.PI,
+    cameraMode: 'chase',
+    streetName: 'Broad Street',
+    isSprinting: false,
+    nearVehicle: null,
+    nearInteractable: null,
+    vehicle: {
+      isDriving: false,
+      vehicleId: null,
+      vehicleName: '',
+      vehicleCategory: 'sedan',
+      speedKmh: 0,
+      rpm: 0,
+      gear: 'N',
+      fuel: 100,
+      engineHealth: 100,
+      seatbeltOn: false,
+      lightsOn: true,
+      sirenOn: false,
+    },
+    police: [],
+    missionDistance: null,
+  });
+
+  // UI Panels & Modals
   const [isPhoneOpen, setIsPhoneOpen] = useState<boolean>(false);
+  const [isInventoryOpen, setIsInventoryOpen] = useState<boolean>(false);
+  const [isRadialOpen, setIsRadialOpen] = useState<boolean>(false);
+  const [isScoreboardOpen, setIsScoreboardOpen] = useState<boolean>(false);
+  const [isHeistOpen, setIsHeistOpen] = useState<boolean>(false);
   const [isCustomizerOpen, setIsCustomizerOpen] = useState<boolean>(false);
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [isDanfoOpen, setIsDanfoOpen] = useState<boolean>(false);
@@ -44,109 +184,1273 @@ export default function LagosLifeGamePage() {
   const [isAfrobeatsOpen, setIsAfrobeatsOpen] = useState<boolean>(false);
   const [isAmalaOpen, setIsAmalaOpen] = useState<boolean>(false);
   const [isQuiloxOpen, setIsQuiloxOpen] = useState<boolean>(false);
+  const [isMapOpen, setIsMapOpen] = useState<boolean>(false);
+  const [isBennysOpen, setIsBennysOpen] = useState<boolean>(false);
+  const [activePedName, setActivePedName] = useState<string | null>(null);
+  const [activeBuildingId, setActiveBuildingId] = useState<LagosDistrict | null>(null);
 
-  // Load saved state on initial client mount
+  const isDowned = vitals.health <= 0;
+
+  const anyBlockingModal =
+    isInventoryOpen ||
+    isRadialOpen ||
+    isScoreboardOpen ||
+    isHeistOpen ||
+    isCustomizerOpen ||
+    isHelpOpen ||
+    isDanfoOpen ||
+    isTechBroOpen ||
+    isAfrobeatsOpen ||
+    isAmalaOpen ||
+    isQuiloxOpen ||
+    isMapOpen ||
+    isBennysOpen ||
+    !!activeBuildingId ||
+    !!activePedName ||
+    !!activeRandomEvent;
+
+  // Free cursor whenever any UI panel, phone, chat, downed state, or ALT is active
+  const cursorFree = anyBlockingModal || isPhoneOpen || isChatOpen || isDowned || altHeld;
+  const movementLocked = anyBlockingModal || isChatOpen;
+
+  const pushChat = useCallback((kind: ChatLine['kind'], author: string, text: string) => {
+    setChatLines((prev) => [
+      ...prev.slice(-30),
+      {
+        id: 'chat-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+        kind,
+        author,
+        text,
+        ts: Date.now(),
+      },
+    ]);
+  }, []);
+
+  const addNotification = useCallback(
+    (
+      title: string,
+      message: string,
+      type: 'info' | 'warning' | 'success' | 'alert' | 'dispatch' = 'info',
+      code?: string
+    ) => {
+      const newNotice: NotificationItem = {
+        id: 'notif-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        title,
+        code,
+        message,
+        type,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setNotifications((prev) => [newNotice, ...prev.slice(0, 3)]);
+      setTimeout(() => {
+        setNotifications((prev) => prev.filter((n) => n.id !== newNotice.id));
+      }, 5000);
+    },
+    []
+  );
+
+  // Load saved state safely
   useEffect(() => {
     try {
-      const savedPlayer = localStorage.getItem('lagos_life_3d_player');
-      const savedVitals = localStorage.getItem('lagos_life_3d_vitals');
-      if (savedPlayer) setPlayer(JSON.parse(savedPlayer));
-      if (savedVitals) setVitals(JSON.parse(savedVitals));
+      const savedPlayer = localStorage.getItem('lagos_life_3d_player_v5');
+      const savedVitals = localStorage.getItem('lagos_life_3d_vitals_v5');
+      if (savedPlayer) {
+        const parsed = JSON.parse(savedPlayer);
+        setPlayer({
+          ...INITIAL_LAPO_PLAYER,
+          ...parsed,
+          items: parsed.items?.length ? parsed.items : DEFAULT_INVENTORY_ITEMS,
+        });
+      }
+      if (savedVitals) {
+        const parsedV = JSON.parse(savedVitals);
+        setVitals({
+          ...INITIAL_VITALS,
+          ...parsedV,
+          health: Math.max(25, parsedV.health ?? 96),
+        });
+      }
     } catch (e) {
-      console.warn('LocalStorage error:', e);
+      console.warn('LocalStorage load error:', e);
     }
   }, []);
 
-  // Save state on change
+  // Persist state
   useEffect(() => {
     try {
-      localStorage.setItem('lagos_life_3d_player', JSON.stringify(player));
-      localStorage.setItem('lagos_life_3d_vitals', JSON.stringify(vitals));
+      localStorage.setItem('lagos_life_3d_player_v5', JSON.stringify(player));
+      localStorage.setItem('lagos_life_3d_vitals_v5', JSON.stringify(vitals));
     } catch (e) {
       console.warn('LocalStorage write error:', e);
     }
   }, [player, vitals]);
 
-  // Game Clock, Vitals Decay & NEPA Outage Simulator
-  useEffect(() => {
-    const clockInterval = setInterval(() => {
-      // 1. Advance Game Time
-      setTimeHour((prev) => (prev + 1) % 24);
+  // Action Progress Bar helper
+  const runActionBar = useCallback((label: string, durationMs: number, onDone: () => void) => {
+    let elapsed = 0;
+    const step = 50;
+    setActionProgress({ label, pct: 5 });
+    const interval = setInterval(() => {
+      elapsed += step;
+      const pct = Math.min(100, Math.round((elapsed / durationMs) * 100));
+      setActionProgress({ label, pct });
+      if (elapsed >= durationMs) {
+        clearInterval(interval);
+        setActionProgress(null);
+        onDone();
+      }
+    }, step);
+  }, []);
 
-      // 2. Slow natural decay of vitals
+  // Helper to pick a random address away from a point
+  const pickRandomAddress = useCallback(
+    (avoidX = 0, avoidZ = 0, minDist = 35) => {
+      const candidates = addresses.filter(
+        (a) => Math.hypot(a.x - avoidX, a.z - avoidZ) >= minDist
+      );
+      const pool = candidates.length > 0 ? candidates : addresses;
+      return pool[Math.floor(Math.random() * pool.length)];
+    },
+    [addresses]
+  );
+
+  // ==================== IN-WORLD 3D MISSION ENGINE ====================
+  const handleStartMission = useCallback(
+    (kind: JobKind) => {
+      const shitta = DISTRICTS.find((d) => d.id === 'shitta')!;
+      const fleeca = DISTRICTS.find((d) => d.id === 'fleeca')!;
+
+      if (kind === 'delivery') {
+        setActiveMission({
+          jobKind: 'delivery',
+          title: 'ChopChop Delivery',
+          stage: 0,
+          objective: 'Pick up hot order at Amala Shitta',
+          target: {
+            id: 'deliv-pickup-' + Date.now(),
+            x: shitta.x,
+            z: shitta.z,
+            label: 'Amala Shitta Pickup',
+            color: '#f59e0b',
+          },
+          reward: 14000,
+          completedRuns: 0,
+          earnedThisShift: 0,
+          startedAt: Date.now(),
+        });
+        addNotification('Shift Started', 'Head to Amala Shitta to pick up your first order!', 'info');
+      } else if (kind === 'taxi') {
+        const addr = pickRandomAddress(worldState.x, worldState.z, 30);
+        setActiveMission({
+          jobKind: 'taxi',
+          title: 'Downtown Cab Co.',
+          stage: 0,
+          objective: `Pick up passenger at ${addr.name}`,
+          target: {
+            id: 'taxi-pickup-' + Date.now(),
+            x: addr.x,
+            z: addr.z,
+            label: addr.name,
+            color: '#facc15',
+          },
+          reward: 18500,
+          completedRuns: 0,
+          earnedThisShift: 0,
+          startedAt: Date.now(),
+        });
+        addNotification('Cab Dispatch', `Passenger waiting at ${addr.name}.`, 'info');
+      } else if (kind === 'mechanic') {
+        const addr = pickRandomAddress(worldState.x, worldState.z, 35);
+        setActiveMission({
+          jobKind: 'mechanic',
+          title: 'Benny’s Roadside',
+          stage: 0,
+          objective: `Repair broken vehicle at ${addr.name}`,
+          target: {
+            id: 'mech-' + Date.now(),
+            x: addr.x,
+            z: addr.z,
+            label: addr.name,
+            color: '#f97316',
+          },
+          reward: 22000,
+          completedRuns: 0,
+          earnedThisShift: 0,
+          startedAt: Date.now(),
+        });
+        addNotification('Benny’s Tow Call', `Stranded motorist at ${addr.name}.`, 'info');
+      } else if (kind === 'police') {
+        const addr = pickRandomAddress(worldState.x, worldState.z, 40);
+        const codes = ['10-31 Prowler', '10-50 Collision', '10-80 Street Disturbance', '10-90 Alarm'];
+        const code = codes[Math.floor(Math.random() * codes.length)];
+        setActiveMission({
+          jobKind: 'police',
+          title: 'Eko PD Patrol',
+          stage: 0,
+          objective: `Respond to ${code} near ${addr.name}`,
+          target: {
+            id: 'pd-' + Date.now(),
+            x: addr.x,
+            z: addr.z,
+            label: addr.name,
+            color: '#3b82f6',
+          },
+          reward: 30000,
+          completedRuns: 0,
+          earnedThisShift: 0,
+          startedAt: Date.now(),
+        });
+        audioEngine.playDispatchAlert();
+        addNotification('PD Dispatch', `Respond Code-3 to ${code} at ${addr.name}!`, 'dispatch', '10-8');
+      } else if (kind === 'ems') {
+        const addr = pickRandomAddress(worldState.x, worldState.z, 35);
+        setActiveMission({
+          jobKind: 'ems',
+          title: 'Pillbox EMS',
+          stage: 0,
+          objective: `Stabilise 911 patient at ${addr.name}`,
+          target: {
+            id: 'ems-pickup-' + Date.now(),
+            x: addr.x,
+            z: addr.z,
+            label: addr.name,
+            color: '#ef4444',
+          },
+          reward: 32000,
+          completedRuns: 0,
+          earnedThisShift: 0,
+          startedAt: Date.now(),
+        });
+        audioEngine.playDispatchAlert();
+        addNotification('EMS 911 Call', `Civilian down at ${addr.name}!`, 'dispatch', '10-52');
+      } else if (kind === 'heist') {
+        setActiveMission({
+          jobKind: 'heist',
+          title: 'Fleeca Vault Heist',
+          stage: 0,
+          objective: 'Infiltrate Fleeca Bank & breach the vault panel',
+          target: {
+            id: 'heist-bank-' + Date.now(),
+            x: fleeca.x,
+            z: fleeca.z,
+            label: 'Fleeca Bank',
+            color: '#ef4444',
+          },
+          reward: 350000,
+          completedRuns: 0,
+          earnedThisShift: 0,
+          startedAt: Date.now(),
+        });
+        addNotification(
+          'Heist Prep Active',
+          'Drive to Fleeca Bank on Broad Street to breach the vault!',
+          'warning'
+        );
+      } else if (kind === 'race') {
+        const cp = RACE_CHECKPOINTS[0];
+        setActiveMission({
+          jobKind: 'race',
+          title: 'Midnight Street Circuit',
+          stage: 0,
+          objective: cp.label,
+          target: {
+            id: 'race-cp-0-' + Date.now(),
+            x: cp.x,
+            z: cp.z,
+            label: cp.label,
+            color: '#ec4899',
+          },
+          reward: 150000,
+          completedRuns: 0,
+          earnedThisShift: 0,
+          startedAt: Date.now(),
+        });
+        audioEngine.playDispatchAlert();
+        addNotification(
+          'Midnight Race Started! 🏎️',
+          'Hit all 4 street checkpoints around the city ring road!',
+          'warning'
+        );
+      } else if (kind === 'developer') {
+        const yaba = DISTRICTS.find((d) => d.id === 'yaba')!;
+        setActiveMission({
+          jobKind: 'developer',
+          title: 'Cloud & Field Server Dev',
+          stage: 0,
+          objective: `Deploy cloud build at ${yaba.name}`,
+          target: {
+            id: 'dev-hub-' + Date.now(),
+            x: yaba.x,
+            z: yaba.z,
+            label: 'Tech Hub Rack',
+            color: '#6366f1',
+          },
+          reward: 42000,
+          completedRuns: 0,
+          earnedThisShift: 0,
+          startedAt: Date.now(),
+        });
+        addNotification(
+          'Software Dev Shift 💻',
+          'Head to the Tech Hub server rack or use your Laptop at Home!',
+          'info'
+        );
+      } else if (kind === 'banker') {
+        setActiveMission({
+          jobKind: 'banker',
+          title: 'Fleeca Bullion & Compliance',
+          stage: 0,
+          objective: 'Report to Fleeca Bank Hall to pick up bullion manifest',
+          target: {
+            id: 'banker-hq-' + Date.now(),
+            x: fleeca.x,
+            z: fleeca.z,
+            label: 'Fleeca Bank HQ',
+            color: '#10b981',
+          },
+          reward: 38000,
+          completedRuns: 0,
+          earnedThisShift: 0,
+          startedAt: Date.now(),
+        });
+        addNotification(
+          'Corporate Banker Shift 🏦',
+          'Report to Fleeca Bank for bullion escort & compliance clearance!',
+          'info'
+        );
+      } else if (kind === 'security') {
+        const addr = pickRandomAddress(worldState.x, worldState.z, 35);
+        setActiveMission({
+          jobKind: 'security',
+          title: 'Sentinel Security Guard',
+          stage: 0,
+          objective: `Patrol & clear perimeter alarm at ${addr.name}`,
+          target: {
+            id: 'sec-patrol-' + Date.now(),
+            x: addr.x,
+            z: addr.z,
+            label: addr.name,
+            color: '#eab308',
+          },
+          reward: 26000,
+          completedRuns: 0,
+          earnedThisShift: 0,
+          startedAt: Date.now(),
+        });
+        audioEngine.playDispatchAlert();
+        addNotification(
+          'Security Guard Patrol 🛡️',
+          `Inspect perimeter alarm at ${addr.name}!`,
+          'info'
+        );
+      }
+    },
+    [addNotification, pickRandomAddress, worldState.x, worldState.z]
+  );
+
+  const handleMissionReached = useCallback(() => {
+    if (!activeMission) return;
+    const shitta = DISTRICTS.find((d) => d.id === 'shitta')!;
+    const pillbox = DISTRICTS.find((d) => d.id === 'pillbox')!;
+
+    if (activeMission.jobKind === 'delivery') {
+      if (activeMission.stage === 0) {
+        const drop = pickRandomAddress(shitta.x, shitta.z, 42);
+        audioEngine.playClick();
+        setActiveMission((m) =>
+          m
+            ? {
+                ...m,
+                stage: 1,
+                objective: `Deliver order to ${drop.name}`,
+                target: {
+                  id: 'deliv-drop-' + Date.now(),
+                  x: drop.x,
+                  z: drop.z,
+                  label: drop.name,
+                  color: '#10b981',
+                },
+              }
+            : null
+        );
+        addNotification('Order Collected', `Deliver hot food to ${drop.name}!`, 'info');
+      } else {
+        const tip = Math.floor(Math.random() * 4500) + 1500;
+        const payout = activeMission.reward + tip;
+        audioEngine.playCashEarn();
+        setPlayer((p) => ({ ...p, cash: p.cash + payout }));
+        setVitals((v) => ({ ...v, streetCred: Math.min(100, v.streetCred + 3) }));
+        setActiveMission((m) =>
+          m
+            ? {
+                ...m,
+                stage: 0,
+                completedRuns: m.completedRuns + 1,
+                earnedThisShift: m.earnedThisShift + payout,
+                objective: 'Return to Amala Shitta for next order',
+                target: {
+                  id: 'deliv-pickup-' + Date.now(),
+                  x: shitta.x,
+                  z: shitta.z,
+                  label: 'Amala Shitta',
+                  color: '#f59e0b',
+                },
+              }
+            : null
+        );
+        addNotification(
+          'Delivery Complete!',
+          `Earned ₦${payout.toLocaleString()} (incl. ₦${tip.toLocaleString()} tip)!`,
+          'success'
+        );
+      }
+      return;
+    }
+
+    if (activeMission.jobKind === 'taxi') {
+      if (activeMission.stage === 0) {
+        const dest = pickRandomAddress(activeMission.target.x, activeMission.target.z, 55);
+        audioEngine.playSeatbeltChime();
+        setActiveMission((m) =>
+          m
+            ? {
+                ...m,
+                stage: 1,
+                objective: `Drop passenger off at ${dest.name}`,
+                target: {
+                  id: 'taxi-drop-' + Date.now(),
+                  x: dest.x,
+                  z: dest.z,
+                  label: dest.name,
+                  color: '#10b981',
+                },
+              }
+            : null
+        );
+        addNotification('Passenger Onboard', `Destination: ${dest.name}.`, 'info');
+      } else {
+        const payout = activeMission.reward + Math.floor(Math.random() * 6000);
+        const nextPickup = pickRandomAddress(activeMission.target.x, activeMission.target.z, 40);
+        audioEngine.playCashEarn();
+        setPlayer((p) => ({ ...p, cash: p.cash + payout }));
+        setVitals((v) => ({ ...v, streetCred: Math.min(100, v.streetCred + 4) }));
+        setActiveMission((m) =>
+          m
+            ? {
+                ...m,
+                stage: 0,
+                completedRuns: m.completedRuns + 1,
+                earnedThisShift: m.earnedThisShift + payout,
+                objective: `Pick up next fare at ${nextPickup.name}`,
+                target: {
+                  id: 'taxi-pickup-' + Date.now(),
+                  x: nextPickup.x,
+                  z: nextPickup.z,
+                  label: nextPickup.name,
+                  color: '#facc15',
+                },
+              }
+            : null
+        );
+        addNotification('Fare Paid!', `Received ₦${payout.toLocaleString()}!`, 'success');
+      }
+      return;
+    }
+
+    if (activeMission.jobKind === 'mechanic') {
+      runActionBar('DIAGNOSING & REPAIRING VEHICLE...', 1500, () => {
+        const payout = activeMission.reward;
+        const nextCall = pickRandomAddress(activeMission.target.x, activeMission.target.z, 45);
+        audioEngine.playCashEarn();
+        setPlayer((p) => ({ ...p, cash: p.cash + payout }));
+        setVitals((v) => ({ ...v, streetCred: Math.min(100, v.streetCred + 5) }));
+        setActiveMission((m) =>
+          m
+            ? {
+                ...m,
+                completedRuns: m.completedRuns + 1,
+                earnedThisShift: m.earnedThisShift + payout,
+                objective: `Repair breakdown at ${nextCall.name}`,
+                target: {
+                  id: 'mech-' + Date.now(),
+                  x: nextCall.x,
+                  z: nextCall.z,
+                  label: nextCall.name,
+                  color: '#f97316',
+                },
+              }
+            : null
+        );
+        addNotification('Roadside Repair Complete!', `Earned ₦${payout.toLocaleString()}!`, 'success');
+      });
+      return;
+    }
+
+    if (activeMission.jobKind === 'police') {
+      runActionBar('SECURING SCENE & LOGGING MDT REPORT...', 1500, () => {
+        const payout = activeMission.reward;
+        const nextAddr = pickRandomAddress(activeMission.target.x, activeMission.target.z, 45);
+        audioEngine.playCashEarn();
+        setPlayer((p) => ({ ...p, bankBalance: p.bankBalance + payout }));
+        setVitals((v) => ({ ...v, streetCred: Math.min(100, v.streetCred + 6) }));
+        setActiveMission((m) =>
+          m
+            ? {
+                ...m,
+                completedRuns: m.completedRuns + 1,
+                earnedThisShift: m.earnedThisShift + payout,
+                objective: `Respond to 10-31 call at ${nextAddr.name}`,
+                target: {
+                  id: 'pd-' + Date.now(),
+                  x: nextAddr.x,
+                  z: nextAddr.z,
+                  label: nextAddr.name,
+                  color: '#3b82f6',
+                },
+              }
+            : null
+        );
+        addNotification(
+          'Scene Code-4!',
+          `₦${payout.toLocaleString()} PD pay deposited to Bank.`,
+          'success'
+        );
+      });
+      return;
+    }
+
+    if (activeMission.jobKind === 'ems') {
+      if (activeMission.stage === 0) {
+        runActionBar('STABILISING PATIENT WITH PILLBOX IFAK...', 1400, () => {
+          audioEngine.playUpNepa();
+          setActiveMission((m) =>
+            m
+              ? {
+                  ...m,
+                  stage: 1,
+                  objective: 'Transport patient to Pillbox Medical Center',
+                  target: {
+                    id: 'ems-hosp-' + Date.now(),
+                    x: pillbox.x,
+                    z: pillbox.z,
+                    label: 'Pillbox Medical',
+                    color: '#38bdf8',
+                  },
+                }
+              : null
+          );
+          addNotification('Patient Stabilised', 'Transport to Pillbox Medical!', 'info');
+        });
+      } else {
+        const payout = activeMission.reward;
+        const nextAddr = pickRandomAddress(pillbox.x, pillbox.z, 45);
+        audioEngine.playCashEarn();
+        setPlayer((p) => ({ ...p, bankBalance: p.bankBalance + payout }));
+        setVitals((v) => ({
+          ...v,
+          health: Math.min(100, v.health + 15),
+          streetCred: Math.min(100, v.streetCred + 6),
+        }));
+        setActiveMission((m) =>
+          m
+            ? {
+                ...m,
+                stage: 0,
+                completedRuns: m.completedRuns + 1,
+                earnedThisShift: m.earnedThisShift + payout,
+                objective: `Stabilise 911 patient at ${nextAddr.name}`,
+                target: {
+                  id: 'ems-pickup-' + Date.now(),
+                  x: nextAddr.x,
+                  z: nextAddr.z,
+                  label: nextAddr.name,
+                  color: '#ef4444',
+                },
+              }
+            : null
+        );
+        addNotification(
+          'Patient Admitted!',
+          `₦${payout.toLocaleString()} EMS pay deposited to Bank!`,
+          'success'
+        );
+      }
+      return;
+    }
+
+    if (activeMission.jobKind === 'heist') {
+      if (activeMission.stage === 0) {
+        setIsHeistOpen(true);
+      } else {
+        const bonus = activeMission.reward;
+        audioEngine.playCashEarn();
+        setPlayer((p) => ({ ...p, cash: p.cash + bonus }));
+        setWantedStars(0);
+        setActiveMission(null);
+        addNotification(
+          'Clean Getaway Complete!',
+          `Laundered extra ₦${bonus.toLocaleString()} at Lagoon Pier & lost the heat!`,
+          'success'
+        );
+      }
+      return;
+    }
+
+    if (activeMission.jobKind === 'race') {
+      const nextStage = activeMission.stage + 1;
+      if (nextStage < RACE_CHECKPOINTS.length) {
+        const cp = RACE_CHECKPOINTS[nextStage];
+        audioEngine.playSeatbeltChime();
+        setActiveMission((m) =>
+          m
+            ? {
+                ...m,
+                stage: nextStage,
+                objective: cp.label,
+                target: {
+                  id: `race-cp-${nextStage}-` + Date.now(),
+                  x: cp.x,
+                  z: cp.z,
+                  label: cp.label,
+                  color: '#ec4899',
+                },
+              }
+            : null
+        );
+        addNotification('Checkpoint Cleared!', `Next: ${cp.label}`, 'info');
+      } else {
+        const payout = activeMission.reward;
+        audioEngine.playCashEarn();
+        setPlayer((p) => ({
+          ...p,
+          cash: p.cash + payout,
+          cryptoBalance: (p.cryptoBalance || 15) + 10,
+        }));
+        setVitals((v) => ({ ...v, streetCred: Math.min(100, v.streetCred + 15) }));
+        const firstCp = RACE_CHECKPOINTS[0];
+        setActiveMission((m) =>
+          m
+            ? {
+                ...m,
+                stage: 0,
+                completedRuns: m.completedRuns + 1,
+                earnedThisShift: m.earnedThisShift + payout,
+                objective: `Lap ${m.completedRuns + 2}: ${firstCp.label}`,
+                target: {
+                  id: 'race-cp-0-' + Date.now(),
+                  x: firstCp.x,
+                  z: firstCp.z,
+                  label: firstCp.label,
+                  color: '#ec4899',
+                },
+              }
+            : null
+        );
+        addNotification(
+          'Circuit Lap Won! 🏆',
+          `Earned ₦${payout.toLocaleString()} + 10 QBit + 15 Cred!`,
+          'success'
+        );
+      }
+      return;
+    }
+
+    const laptopSpec =
+      LAPTOP_MODELS_CATALOG.find((l) => l.id === player.laptopModelId) || LAPTOP_MODELS_CATALOG[0];
+
+    if (activeMission.jobKind === 'developer') {
+      runActionBar(`PATCHING KUBERNETES NODE ON ${laptopSpec.name.toUpperCase()}...`, 1400, () => {
+        const payout = Math.round(activeMission.reward * laptopSpec.payMultiplier);
+        const nextNode = pickRandomAddress(activeMission.target.x, activeMission.target.z, 42);
+        audioEngine.playCashEarn();
+        setPlayer((p) => ({
+          ...p,
+          bankBalance: p.bankBalance + payout,
+          cryptoBalance: (p.cryptoBalance || 15) + 3,
+        }));
+        setVitals((v) => ({ ...v, streetCred: Math.min(100, v.streetCred + 6) }));
+        setActiveMission((m) =>
+          m
+            ? {
+                ...m,
+                completedRuns: m.completedRuns + 1,
+                earnedThisShift: m.earnedThisShift + payout,
+                objective: `Patch fiber server node at ${nextNode.name}`,
+                target: {
+                  id: 'dev-node-' + Date.now(),
+                  x: nextNode.x,
+                  z: nextNode.z,
+                  label: nextNode.name,
+                  color: '#6366f1',
+                },
+              }
+            : null
+        );
+        addNotification(
+          'Production Node Patched! 💻',
+          `₦${payout.toLocaleString()} (${laptopSpec.payMultiplier}x Laptop Bonus) + 3 QBit wired to Bank!`,
+          'success'
+        );
+      });
+      return;
+    }
+
+    if (activeMission.jobKind === 'banker') {
+      const fleeca = DISTRICTS.find((d) => d.id === 'fleeca')!;
+      if (activeMission.stage === 0) {
+        const clientAddr = pickRandomAddress(fleeca.x, fleeca.z, 45);
+        audioEngine.playSeatbeltChime();
+        setActiveMission((m) =>
+          m
+            ? {
+                ...m,
+                stage: 1,
+                objective: `Verify corporate bullion settlement at ${clientAddr.name}`,
+                target: {
+                  id: 'banker-client-' + Date.now(),
+                  x: clientAddr.x,
+                  z: clientAddr.z,
+                  label: clientAddr.name,
+                  color: '#10b981',
+                },
+              }
+            : null
+        );
+        addNotification('Bullion Manifest Loaded', `Escort settlement to ${clientAddr.name}.`, 'info');
+      } else {
+        runActionBar('CLEARING CBN RTGS SETTLEMENT LEDGER...', 1300, () => {
+          const payout = Math.round(activeMission.reward * laptopSpec.payMultiplier);
+          audioEngine.playCashEarn();
+          setPlayer((p) => ({ ...p, bankBalance: p.bankBalance + payout }));
+          setVitals((v) => ({ ...v, streetCred: Math.min(100, v.streetCred + 5) }));
+          setActiveMission((m) =>
+            m
+              ? {
+                  ...m,
+                  stage: 0,
+                  completedRuns: m.completedRuns + 1,
+                  earnedThisShift: m.earnedThisShift + payout,
+                  objective: 'Return to Fleeca Bank HQ for next bullion manifest',
+                  target: {
+                    id: 'banker-hq-' + Date.now(),
+                    x: fleeca.x,
+                    z: fleeca.z,
+                    label: 'Fleeca Bank HQ',
+                    color: '#10b981',
+                  },
+                }
+              : null
+          );
+          addNotification(
+            'Corporate Settlement Cleared! 🏦',
+            `₦${payout.toLocaleString()} Banker commission deposited to Bank!`,
+            'success'
+          );
+        });
+      }
+      return;
+    }
+
+    if (activeMission.jobKind === 'security') {
+      runActionBar('SCANNING PERIMETER & LOGGING GUARD CHECKPOINT...', 1250, () => {
+        const payout = activeMission.reward;
+        const nextPost = pickRandomAddress(activeMission.target.x, activeMission.target.z, 40);
+        audioEngine.playCashEarn();
+        setPlayer((p) => ({ ...p, bankBalance: p.bankBalance + payout }));
+        setVitals((v) => ({ ...v, streetCred: Math.min(100, v.streetCred + 4) }));
+        setActiveMission((m) =>
+          m
+            ? {
+                ...m,
+                completedRuns: m.completedRuns + 1,
+                earnedThisShift: m.earnedThisShift + payout,
+                objective: `Patrol & secure perimeter at ${nextPost.name}`,
+                target: {
+                  id: 'sec-patrol-' + Date.now(),
+                  x: nextPost.x,
+                  z: nextPost.z,
+                  label: nextPost.name,
+                  color: '#eab308',
+                },
+              }
+            : null
+        );
+        addNotification(
+          'Perimeter Secured! 🛡️',
+          `₦${payout.toLocaleString()} Security Guard pay deposited to Bank!`,
+          'success'
+        );
+      });
+    }
+  }, [activeMission, addNotification, pickRandomAddress, player.laptopModelId, runActionBar]);
+
+  // Use Inventory / Hotbar Item
+  const handleUseItem = useCallback(
+    (item: InventoryItem) => {
+      if (item.id === 'ekophone_pro') {
+        setIsInventoryOpen(false);
+        setIsPhoneOpen(true);
+        return;
+      }
+      if (item.id === 'thermite_laptop') {
+        setIsInventoryOpen(false);
+        setIsHeistOpen(true);
+        return;
+      }
+      if (item.id === 'heavy_armor') {
+        setIsInventoryOpen(false);
+        runActionBar('EQUIPPING CLASS-IV BODY ARMOR...', 1100, () => {
+          audioEngine.playSeatbeltChime();
+          setVitals((v) => ({ ...v, armor: Math.min(100, v.armor + 50) }));
+          addNotification('Armor Equipped', '+50 Tactical Kevlar Armor applied.', 'success');
+        });
+        return;
+      }
+      if (item.id === 'ifak_medkit') {
+        setIsInventoryOpen(false);
+        runActionBar('APPLYING PILLBOX IFAK MEDKIT...', 1100, () => {
+          audioEngine.playUpNepa();
+          setVitals((v) => ({
+            ...v,
+            health: Math.min(100, v.health + 45),
+            stress: Math.max(0, v.stress - 15),
+          }));
+          addNotification('IFAK Medkit Used', '+45 Health restored.', 'success');
+        });
+        return;
+      }
+      if (item.id === 'amala_pack' || item.id === 'energy_drink') {
+        setIsInventoryOpen(false);
+        runActionBar(`CONSUMING ${item.name.toUpperCase()}...`, 950, () => {
+          audioEngine.playEatFood();
+          setVitals((v) => ({
+            ...v,
+            hunger: Math.min(100, v.hunger + 45),
+            thirst: Math.min(100, v.thirst + 50),
+            energy: Math.min(100, v.energy + 45),
+            stress: Math.max(0, v.stress - 20),
+          }));
+          addNotification('Vitals Replenished', `Consumed ${item.name}!`, 'success');
+        });
+        return;
+      }
+      if (item.id === 'adv_lockpick') {
+        setIsInventoryOpen(false);
+        runActionBar('HOTWIRING IGNITION...', 1300, () => {
+          setSpawnVehicleRequest({ id: 'veh-super', timestamp: Date.now() });
+          addNotification('Vehicle Hotwired', 'Pfister Neon GT R unlocked!', 'success');
+        });
+        return;
+      }
+      addNotification(item.name, item.description, 'info');
+    },
+    [addNotification, runActionBar]
+  );
+
+  // Buy Item from 24/7 Shop
+  const handleBuyItem = (shopItem: InventoryItem) => {
+    const cost = shopItem.price || 5000;
+    if (player.cash < cost) {
+      addNotification(
+        'Insufficient Pocket Cash',
+        'Use an ATM or Fleeca Bank app to withdraw cash first!',
+        'warning'
+      );
+      return;
+    }
+    audioEngine.playCashEarn();
+    setPlayer((prev) => {
+      const existingIdx = (prev.items || []).findIndex((i) => i.id === shopItem.id);
+      const nextItems = [...(prev.items || [])];
+      if (existingIdx >= 0) {
+        nextItems[existingIdx] = {
+          ...nextItems[existingIdx],
+          quantity: nextItems[existingIdx].quantity + 1,
+        };
+      } else {
+        nextItems.push({ ...shopItem, quantity: 1 });
+      }
+      return {
+        ...prev,
+        cash: prev.cash - cost,
+        items: nextItems,
+      };
+    });
+    addNotification('24/7 Purchase', `Bought 1x ${shopItem.name}.`, 'success');
+  };
+
+  // Trigger a Random Real-Life RP Event
+  const handleTriggerRandomEvent = useCallback(() => {
+    const pick = ALL_LIFE_EVENTS[Math.floor(Math.random() * ALL_LIFE_EVENTS.length)];
+    audioEngine.playDispatchAlert();
+    setActiveRandomEvent(pick);
+  }, []);
+
+  // RP Chat Submission & Slash Commands
+  const handleSubmitChat = useCallback(
+    (raw: string) => {
+      const trimmed = raw.trim();
+      if (!trimmed) return;
+
+      if (trimmed.startsWith('/me ')) {
+        const act = trimmed.slice(4).trim();
+        if (act) {
+          setMeText({ text: `* ${act} *`, ts: Date.now() });
+          pushChat('me', player.name, act);
+        }
+        return;
+      }
+      if (trimmed.startsWith('/do ')) {
+        const desc = trimmed.slice(4).trim();
+        if (desc) pushChat('do', player.name, desc);
+        return;
+      }
+      if (trimmed.startsWith('/e ')) {
+        const arg = trimmed.slice(3).trim().toLowerCase();
+        if (arg === 'stop' || arg === 'c' || arg === 'none') {
+          setEmote('none');
+        } else if (VALID_EMOTES.includes(arg as Emote)) {
+          setEmote(arg as Emote);
+          pushChat('me', player.name, `performs ${arg}`);
+        } else {
+          pushChat(
+            'system',
+            'SYSTEM',
+            'Available emotes: wave, dance, handsup, sit, pushups, salute, facepalm, stop'
+          );
+        }
+        return;
+      }
+      if (trimmed.startsWith('/weather ')) {
+        const w = trimmed.slice(9).trim().toLowerCase() as Weather;
+        if (['clear', 'cloudy', 'rain', 'fog'].includes(w)) {
+          setWeather(w);
+          pushChat('system', 'SYSTEM', `Weather changed to ${w.toUpperCase()}.`);
+        }
+        return;
+      }
+      if (trimmed.startsWith('/time ')) {
+        const hr = parseFloat(trimmed.slice(6).trim());
+        if (!Number.isNaN(hr)) {
+          setTimeOfDay(((hr % 24) + 24) % 24);
+          pushChat('system', 'SYSTEM', `Clock set to ${Math.floor(hr)}:00.`);
+        }
+        return;
+      }
+      if (trimmed === '/clear') {
+        setChatLines([]);
+        return;
+      }
+      if (trimmed === '/help') {
+        setIsHelpOpen(true);
+        return;
+      }
+
+      pushChat('ooc', player.name, trimmed);
+    },
+    [player.name, pushChat]
+  );
+
+  // Global Hotkeys (F1, TAB, M, T, U, V, ALT, ESC, 1-5)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') {
+        setAltHeld(true);
+      }
+
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') {
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        setIsPhoneOpen(false);
+        setIsRadialOpen(false);
+        setIsInventoryOpen(false);
+        setIsScoreboardOpen(false);
+        setIsHelpOpen(false);
+        setIsChatOpen(false);
+        setIsMapOpen(false);
+        setIsBennysOpen(false);
+        setActiveBuildingId(null);
+        setActivePedName(null);
+        return;
+      }
+
+      if (e.key === 'F1') {
+        e.preventDefault();
+        audioEngine.playClick();
+        setIsRadialOpen((prev) => !prev);
+      } else if (e.key === 'Tab' || e.key.toLowerCase() === 'i') {
+        e.preventDefault();
+        audioEngine.playClick();
+        setIsInventoryOpen((prev) => !prev);
+      } else if (e.key.toLowerCase() === 'm' || e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        audioEngine.playClick();
+        setIsPhoneOpen((prev) => !prev);
+      } else if (e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        audioEngine.playClick();
+        setIsMapOpen((prev) => !prev);
+      } else if (e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        setIsChatOpen(true);
+      } else if (e.key.toLowerCase() === 'u') {
+        e.preventDefault();
+        audioEngine.playClick();
+        setIsScoreboardOpen((prev) => !prev);
+      } else if (e.key.toLowerCase() === 'v') {
+        audioEngine.playClick();
+        setCameraMode((prev) =>
+          prev === 'chase' ? 'hood' : prev === 'hood' ? 'isometric' : 'chase'
+        );
+      } else if (['1', '2', '3', '4', '5'].includes(e.key)) {
+        const slotIdx = parseInt(e.key, 10) - 1;
+        const item = (player.items || [])[slotIdx];
+        if (item) handleUseItem(item);
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') setAltHeld(false);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [player.items, handleUseItem]);
+
+  // Smooth Continuous World Clock + Sprinting Stamina Loop (1Hz)
+  useEffect(() => {
+    const tick = setInterval(() => {
+      setTimeOfDay((t) => (t + 0.025) % 24);
+      setVitals((v) => ({
+        ...v,
+        energy: worldState.isSprinting
+          ? Math.max(0, v.energy - 1.4)
+          : Math.min(100, v.energy + 0.45),
+      }));
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [worldState.isSprinting]);
+
+  // Ambient City Life Loop: Vitals Hunger/Thirst, OOC Server Chatter, Calls & Weather (every 24s)
+  useEffect(() => {
+    const ambient = setInterval(() => {
       setVitals((prev) => ({
         ...prev,
-        hunger: Math.max(0, prev.hunger - 1),
-        energy: Math.max(0, prev.energy - 0.5),
+        hunger: Math.max(0, prev.hunger - 0.8),
+        thirst: Math.max(0, prev.thirst - 1.0),
       }));
 
-      // 3. Random NEPA Grid Simulator (every ~60 seconds chance of surge/blackout)
-      if (Math.random() > 0.8) {
-        setIsNepaActive((currentNepa) => {
-          const nextNepa = !currentNepa;
-          if (!nextNepa) {
+      // Live Server RP / OOC Chatter
+      const line = OOC_CHATTER[Math.floor(Math.random() * OOC_CHATTER.length)];
+      pushChat(line.kind, line.author, line.text);
+
+      // Occasional incoming NPC call
+      if (Math.random() > 0.78 && !isPhoneOpen && !incomingCaller) {
+        const contact = PHONE_CONTACTS[Math.floor(Math.random() * PHONE_CONTACTS.length)];
+        audioEngine.playPhoneRing();
+        setIncomingCaller(contact);
+      }
+
+      // Gentle dynamic weather transitions
+      if (Math.random() > 0.85) {
+        const pool: Weather[] = ['clear', 'clear', 'cloudy', 'rain', 'fog'];
+        setWeather(pool[Math.floor(Math.random() * pool.length)]);
+      }
+
+      // Occasional NEPA Grid event (Solar Roof keeps home powered even during grid blackouts!)
+      if (Math.random() > 0.88) {
+        setIsNepaActive((curr) => {
+          const next = !curr;
+          if (!next) {
             audioEngine.playBlackout();
             addNotification(
-              'NEPA Blackout!',
-              'National grid collapsed! Switch on your generator or inverter.',
+              'Grid Outage',
+              (player.solarKw ?? 0) > 0
+                ? `NEPA grid tripped — your ${player.solarKw}kVA Solar Roof kept your house online!`
+                : 'Substation tripped — backup generators active.',
               'warning'
             );
           } else {
             audioEngine.playUpNepa();
-            addNotification(
-              'Up NEPA! ⚡',
-              'Power restored! All neighbors shouting "UP NEPA!" in unison.',
-              'success'
-            );
+            addNotification('Power Restored ⚡', 'City grid back online!', 'success');
           }
-          return nextNepa;
+          return next;
         });
       }
-    }, 25000);
+    }, 24000);
 
-    return () => clearInterval(clockInterval);
-  }, []);
+    return () => clearInterval(ambient);
+  }, [addNotification, incomingCaller, isPhoneOpen, player.solarKw, pushChat]);
 
-  const isNightTime = timeHour >= 19 || timeHour < 6;
+  // Commercial Flight Handler (Lagos LOS ⇄ Abuja ABV)
+  const handleFlyToCity = useCallback(
+    (targetCity: CityId, airlineName: string) => {
+      const destLabel = targetCity === 'abuja' ? 'Abuja (Nnamdi Azikiwe Int’l ABV)' : 'Lagos (Murtala Muhammed Int’l LOS)';
+      runActionBar(`BOARDING ${airlineName.toUpperCase()} FLIGHT TO ${targetCity.toUpperCase()}...`, 1600, () => {
+        audioEngine.playUpNepa();
+        setPlayer((p) => ({ ...p, activeCity: targetCity }));
+        setTeleportRequest({ x: -68, z: 53, ts: Date.now() });
+        setWaypoint(null);
+        pushChat('system', 'FAAN ATC', `${player.name} landed at ${destLabel} via ${airlineName}.`);
+        addNotification('Flight Landed ✈️', `Welcome to ${destLabel}!`, 'success');
+      });
+    },
+    [addNotification, player.name, pushChat, runActionBar]
+  );
 
-  const addNotification = (
-    title: string,
-    message: string,
-    type: 'info' | 'warning' | 'success' | 'alert' = 'info'
-  ) => {
-    const newNotice: NotificationItem = {
-      id: 'notif-' + Date.now(),
-      title,
-      message,
-      type,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-    setNotifications((prev) => [newNotice, ...prev.slice(0, 3)]);
+  // Interact with 3D Landmarks, Enterable Buildings, ATMs, Pedestrians & Services
+  const handleInteract = useCallback(
+    (locationId: string) => {
+      audioEngine.playClick();
 
-    // Auto dismiss after 5 seconds
-    setTimeout(() => {
-      setNotifications((prev) => prev.filter((n) => n.id !== newNotice.id));
-    }, 5000);
-  };
-
-  // Interact with 3D landmark triggers
-  const handleInteract = (locationId: string) => {
-    audioEngine.playClick();
-    if (locationId === 'shitta') {
-      setIsAmalaOpen(true);
-    } else if (locationId === 'quilox') {
-      setIsQuiloxOpen(true);
-    } else if (locationId === 'yaba') {
-      setIsTechBroOpen(true);
-    } else if (locationId === 'computervillage') {
+      if (locationId === 'bennys') {
+        setIsBennysOpen(true);
+        return;
+      }
+      if (locationId.startsWith('ped:')) {
+        const pedLabel = worldState.nearInteractable?.name || 'Street Citizen';
+        setActivePedName(pedLabel);
+        return;
+      }
+      if (locationId === 'atm') {
+        setIsPhoneOpen(true);
+        addNotification('Fleeca ATM', 'Connected to Checking Account on your phone.', 'info');
+        return;
+      }
+      // Enterable Buildings with rich interiors (Home, Airport, Computer Village, Mall, Bank, Gas/NEPA/Solar, Police/Security HQ, Tech Hub)
+      if (
+        locationId === 'home' ||
+        locationId === 'airport' ||
+        locationId === 'computervillage' ||
+        locationId === 'lekki' ||
+        locationId === 'fleeca' ||
+        locationId === 'gas' ||
+        locationId === 'mrpd' ||
+        locationId === 'yaba'
+      ) {
+        setActiveBuildingId(locationId as LagosDistrict);
+        return;
+      }
+      if (locationId === 'shitta') {
+        setIsAmalaOpen(true);
+        return;
+      }
+      if (locationId === 'pillbox') {
+        runActionBar('CHECKING IN WITH NANCY AT PILLBOX MEDICAL...', 1400, () => {
+          const fee = player.cash >= 2500 ? 2500 : 0;
+          audioEngine.playUpNepa();
+          if (fee > 0) setPlayer((p) => ({ ...p, cash: p.cash - fee }));
+          setVitals((v) => ({ ...v, health: 100, stress: Math.max(0, v.stress - 30) }));
+          addNotification(
+            'Discharged from Pillbox',
+            `100% Health restored${fee ? ' (-₦2,500 co-pay)' : ''}!`,
+            'success'
+          );
+        });
+        return;
+      }
+      if (locationId === 'clothing') {
+        setIsCustomizerOpen(true);
+        return;
+      }
+      if (locationId === 'quilox') {
+        setIsQuiloxOpen(true);
+        return;
+      }
+      if (locationId === 'lagoon') {
+        setIsDanfoOpen(true);
+        return;
+      }
       setIsPhoneOpen(true);
-    } else if (locationId === 'lekki') {
-      setIsPhoneOpen(true);
-    } else if (locationId === 'lagoon') {
-      setIsDanfoOpen(true);
-    } else {
-      setIsPhoneOpen(true);
-    }
+    },
+    [
+      addNotification,
+      player.cash,
+      runActionBar,
+      worldState.nearInteractable?.name,
+    ]
+  );
+
+  // Ron Petrol Refuel Handler (called by LagosWorld3D when driving under canopy + pressing [E])
+  const handleRefuelRequest = useCallback(
+    (missingPct: number): boolean => {
+      const cost = Math.max(500, Math.round(missingPct * 85));
+      if (player.cash < cost && player.bankBalance < cost) {
+        addNotification(
+          'Card Declined',
+          `Need ₦${cost.toLocaleString()} to refuel at Ron Petrol!`,
+          'warning'
+        );
+        return false;
+      }
+      audioEngine.playCashEarn();
+      setPlayer((p) =>
+        p.cash >= cost
+          ? { ...p, cash: p.cash - cost }
+          : { ...p, bankBalance: p.bankBalance - cost }
+      );
+      addNotification('Tank Filled ⛽', `Paid ₦${cost.toLocaleString()} at Ron Petrol.`, 'success');
+      return true;
+    },
+    [addNotification, player.bankBalance, player.cash]
+  );
+
+  // Damage, Crime & Police Arrest Handlers
+  const handleDamage = useCallback(
+    (amount: number, reason: string) => {
+      setVitals((v) => {
+        const armorAbsorb = Math.min(v.armor, Math.round(amount * 0.55));
+        const hpLoss = Math.max(1, amount - armorAbsorb);
+        return {
+          ...v,
+          armor: Math.max(0, v.armor - armorAbsorb),
+          health: Math.max(0, v.health - hpLoss),
+          stress: Math.min(100, v.stress + 6),
+        };
+      });
+      if (amount >= 12) {
+        addNotification('Injury Sustained', reason, 'alert');
+      }
+    },
+    [addNotification]
+  );
+
+  const handleCrime = useCallback(
+    (kind: string) => {
+      setWantedStars((w) => Math.min(5, Math.max(1, w + 1)));
+      audioEngine.playDispatchAlert();
+      addNotification('10-32 Crime Reported', `${kind} — Eko PD units responding!`, 'dispatch', '10-80');
+    },
+    [addNotification]
+  );
+
+  const handleBusted = useCallback(() => {
+    const fine = Math.min(player.cash, 35000);
+    setPlayer((p) => ({ ...p, cash: Math.max(0, p.cash - fine) }));
+    setWantedStars(0);
+    setTeleportRequest({ x: 40, z: -13, ts: Date.now() });
+    pushChat('system', 'MRPD', `${player.name} was processed and fined ₦${fine.toLocaleString()}.`);
+    addNotification(
+      'Busted by Eko PD!',
+      `Processed at Mission Row PD (-₦${fine.toLocaleString()} fine).`,
+      'alert'
+    );
+  }, [addNotification, player.cash, player.name, pushChat]);
+
+  const handleReviveEMS = () => {
+    const fee = Math.min(player.bankBalance, 3500);
+    audioEngine.playUpNepa();
+    setPlayer((p) => ({ ...p, bankBalance: Math.max(0, p.bankBalance - fee) }));
+    setVitals((v) => ({ ...v, health: 100, hunger: Math.max(50, v.hunger), thirst: Math.max(50, v.thirst) }));
+    setTeleportRequest({ x: -40, z: 14, ts: Date.now() });
+    addNotification('Pillbox Trauma Team', 'Revived & discharged at Pillbox Medical!', 'success');
   };
 
   // Audio toggles
@@ -154,9 +1458,12 @@ export default function LagosLifeGamePage() {
     const nextMuted = !isAudioMuted;
     audioEngine.isMuted = nextMuted;
     setIsAudioMuted(nextMuted);
-    if (nextMuted && isPlayingMusic) {
-      audioEngine.stopAfrobeatsGroove();
-      setIsPlayingMusic(false);
+    if (nextMuted) {
+      audioEngine.setEngine(false, 0);
+      if (isPlayingMusic) {
+        audioEngine.stopAfrobeatsGroove();
+        setIsPlayingMusic(false);
+      }
     }
   };
 
@@ -169,100 +1476,522 @@ export default function LagosLifeGamePage() {
     setIsPlayingMusic(playing);
   };
 
-  // Mini-Game Starters
-  const handleStartMiniGame = (gameId: 'danfo' | 'techbro' | 'afrobeats') => {
+  const handleStartMiniGame = (gameId: 'danfo' | 'techbro' | 'afrobeats' | 'heist') => {
     if (gameId === 'danfo') setIsDanfoOpen(true);
     if (gameId === 'techbro') setIsTechBroOpen(true);
     if (gameId === 'afrobeats') setIsAfrobeatsOpen(true);
+    if (gameId === 'heist') setIsHeistOpen(true);
   };
 
+  const handleSetDistrictWaypoint = useCallback(
+    (distId: LagosDistrict) => {
+      const cityList = getDistrictsForCity(player.activeCity || 'lagos');
+      const d = cityList.find((item) => item.id === distId);
+      if (!d) return;
+      setWaypoint({
+        id: 'wp-' + d.id + '-' + Date.now(),
+        x: d.x,
+        z: d.z,
+        label: d.name,
+        color: '#a855f7',
+      });
+    },
+    [player.activeCity]
+  );
+
   return (
-    <main className="relative w-screen h-screen overflow-hidden bg-[#090D16]">
-      
-      {/* 3D WebGL World Simulation Canvas */}
+    <main className="relative w-screen h-screen overflow-hidden bg-[#050814]">
+      {/* 3D WebGL Open-World City & Articulated Playable Character */}
       <LagosWorld3D
-        currentDistrict={currentDistrict}
-        onDistrictSelect={setCurrentDistrict}
-        onInteract={handleInteract}
-        playerOutfitColor={player.outfit.color}
+        outfit={player.outfit}
+        activeCity={player.activeCity || 'lagos'}
+        solarKw={player.solarKw || 0}
+        timeOfDay={timeOfDay}
+        weather={weather}
         isNepaActive={isNepaActive}
-        isNightTime={isNightTime}
-        timeHour={timeHour}
+        cameraMode={cameraMode}
+        emote={emote}
+        holdingPhone={isPhoneOpen}
+        movementLocked={movementLocked}
+        cursorFree={cursorFree}
+        isDowned={isDowned}
+        energy={vitals.energy}
+        wantedStars={wantedStars}
+        missionTarget={activeMission?.target ?? null}
+        waypoint={waypoint}
+        teleportRequest={teleportRequest}
+        spawnVehicleRequest={spawnVehicleRequest}
+        vehicleControlTrigger={vehicleControlTrigger}
+        tuneVehicleRequest={tuneVehicleRequest}
+        meText={meText}
+        onInteract={handleInteract}
+        onRefuelRequest={handleRefuelRequest}
+        onMissionReached={handleMissionReached}
+        onWaypointReached={() => {
+          setWaypoint(null);
+          addNotification('GPS Arrived', 'Reached your waypoint.', 'info');
+        }}
+        onBusted={handleBusted}
+        onWantedEscaped={() => {
+          setWantedStars(0);
+          addNotification('Pursuit Evaded', 'You lost Eko PD interceptors!', 'success');
+        }}
+        onCrime={handleCrime}
+        onDamage={handleDamage}
+        onEmoteCancel={() => setEmote('none')}
+        onUpdateWorldState={setWorldState}
       />
 
-      {/* Floating Game HUD (Vitals, Fast-Travel, Audio, Time) */}
+      {/* Clean, Uncluttered NoPixel V HUD */}
       <GameHUD
         player={player}
         vitals={vitals}
-        timeHour={timeHour}
-        isNightTime={isNightTime}
-        isNepaActive={isNepaActive}
-        currentDistrict={currentDistrict}
+        worldState={worldState}
+        wantedStars={wantedStars}
+        timeOfDay={timeOfDay}
+        weather={weather}
+        emote={emote}
+        activeMission={activeMission}
+        missionTarget={activeMission?.target ?? null}
+        waypoint={waypoint}
+        isPhoneOpen={isPhoneOpen}
+        isChatOpen={isChatOpen}
+        chatLines={chatLines}
+        voiceMode={voiceMode}
+        isRadioOn={isRadioOn}
         isAudioMuted={isAudioMuted}
         isPlayingMusic={isPlayingMusic}
+        onlineCount={SERVER_PLAYERS.length + 1}
+        onOpenChat={() => setIsChatOpen(true)}
+        onCloseChat={() => setIsChatOpen(false)}
+        onSubmitChat={handleSubmitChat}
+        onCycleVoiceMode={() => {
+          audioEngine.playRadioClick();
+          setVoiceMode((m) =>
+            m === 'whisper' ? 'normal' : m === 'normal' ? 'shout' : 'whisper'
+          );
+        }}
+        onToggleRadio={() => {
+          audioEngine.playRadioClick();
+          setIsRadioOn((r) => !r);
+        }}
         onToggleMute={handleToggleMute}
         onToggleMusic={handleToggleMusic}
-        onOpenPhone={() => { audioEngine.playClick(); setIsPhoneOpen(true); }}
-        onOpenCustomizer={() => { audioEngine.playClick(); setIsCustomizerOpen(true); }}
-        onOpenHelp={() => { audioEngine.playClick(); setIsHelpOpen(true); }}
-        onSelectDistrict={setCurrentDistrict}
+        onOpenPhone={() => {
+          audioEngine.playClick();
+          setIsPhoneOpen((o) => !o);
+        }}
+        onOpenInventory={() => {
+          audioEngine.playClick();
+          setIsInventoryOpen(true);
+        }}
+        onOpenRadial={() => {
+          audioEngine.playClick();
+          setIsRadialOpen(true);
+        }}
+        onOpenMap={() => {
+          audioEngine.playClick();
+          setIsMapOpen(true);
+        }}
+        onOpenScoreboard={() => {
+          audioEngine.playClick();
+          setIsScoreboardOpen(true);
+        }}
+        onOpenHelp={() => {
+          audioEngine.playClick();
+          setIsHelpOpen(true);
+        }}
+        onOpenHome={() => {
+          audioEngine.playClick();
+          setTeleportRequest({ x: 68, z: 53, ts: Date.now() });
+          setActiveBuildingId('home');
+        }}
+        onOpenAirport={() => {
+          audioEngine.playClick();
+          setTeleportRequest({ x: -68, z: 53, ts: Date.now() });
+          setActiveBuildingId('airport');
+        }}
+        onStopMission={() => {
+          setActiveMission(null);
+          addNotification('Shift Ended', 'Clocked out of current job.', 'info');
+        }}
+        onCancelEmote={() => setEmote('none')}
+        onUseHotbarItem={handleUseItem}
+        onSetWaypoint={setWaypoint}
+        onInteractPromptClick={() => {
+          const near = worldState.nearInteractable;
+          if (!near) return;
+          if (near.id === 'refuel') {
+            handleRefuelRequest(100 - worldState.vehicle.fuel);
+          } else {
+            handleInteract(near.id);
+          }
+        }}
+        onVehicleAction={(action) =>
+          setVehicleControlTrigger({ action, timestamp: Date.now() })
+        }
       />
 
-      {/* Floating Notifications Toaster */}
-      <div className="absolute top-24 right-5 z-40 flex flex-col gap-2 pointer-events-none max-w-sm">
+      {/* NoPixel Action Task Progress Bar */}
+      {actionProgress && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 w-72 bg-[#090d16]/95 border border-teal-400/60 rounded-2xl p-3 shadow-2xl pointer-events-none animate-fade-in">
+          <div className="flex justify-between text-[10px] font-mono font-black text-teal-300 mb-1.5">
+            <span>{actionProgress.label}</span>
+            <span>{actionProgress.pct}%</span>
+          </div>
+          <div className="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-teal-400 transition-all duration-75"
+              style={{ width: `${actionProgress.pct}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Incapacitated / Downed EMS Revival Banner */}
+      {isDowned && (
+        <div className="fixed inset-x-0 bottom-28 z-50 flex justify-center px-4 pointer-events-auto">
+          <div className="bg-rose-950/95 backdrop-blur-xl border-2 border-rose-500 rounded-3xl px-6 py-4 shadow-[0_0_50px_rgba(244,63,94,0.5)] text-white max-w-md w-full text-center space-y-2.5">
+            <div className="flex items-center justify-center gap-2 text-rose-300 font-mono font-black text-xs uppercase tracking-widest">
+              <HeartPulse size={18} className="animate-ping" />
+              <span>INCAPACITATED — 10-52 EMS REQUIRED</span>
+            </div>
+            <p className="text-xs text-zinc-200">
+              You are critically injured on {worldState.streetName}. Dispatch Pillbox Medical trauma transport?
+            </p>
+            <button
+              onClick={handleReviveEMS}
+              className="w-full py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition-all"
+            >
+              Call Pillbox EMS Transport & Revive (₦3,500)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Live Incoming Phone Call Toast */}
+      {incomingCaller && !isPhoneOpen && (
+        <div className="fixed bottom-24 right-4 z-40 w-72 bg-[#090d16]/95 backdrop-blur-xl border border-emerald-400/70 rounded-3xl p-3.5 shadow-2xl text-white animate-fade-in">
+          <div className="flex items-center gap-3 mb-2.5">
+            <div
+              className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl animate-bounce"
+              style={{ backgroundColor: incomingCaller.color }}
+            >
+              {incomingCaller.avatar}
+            </div>
+            <div className="min-w-0">
+              <span className="text-[9px] font-mono uppercase tracking-wider text-emerald-400 font-bold block">
+                INCOMING CALL
+              </span>
+              <h4 className="text-xs font-extrabold truncate">{incomingCaller.name}</h4>
+              <p className="text-[10px] text-zinc-400 truncate">{incomingCaller.role}</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                audioEngine.playClick();
+                setIncomingCaller(null);
+              }}
+              className="flex-1 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1"
+            >
+              <PhoneOff size={13} /> Decline
+            </button>
+            <button
+              onClick={() => {
+                audioEngine.playClick();
+                setIsPhoneOpen(true);
+              }}
+              className="flex-1 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs flex items-center justify-center gap-1"
+            >
+              <PhoneIncoming size={13} /> Answer
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* NoPixel Dispatch & Notification Toaster */}
+      <div className="fixed top-24 right-4 z-30 flex flex-col gap-2 pointer-events-none max-w-xs">
         {notifications.map((n) => (
           <div
             key={n.id}
-            className={`pointer-events-auto p-3 rounded-2xl shadow-2xl border backdrop-blur-md text-xs animate-fade-in flex flex-col gap-0.5 ${
-              n.type === 'success'
-                ? 'bg-emerald-950/90 border-emerald-500/60 text-emerald-200'
+            className={`pointer-events-auto px-3.5 py-2.5 rounded-2xl shadow-2xl border-l-4 backdrop-blur-xl text-xs animate-fade-in ${
+              n.type === 'dispatch'
+                ? 'bg-blue-950/92 border-rose-500 text-blue-100'
+                : n.type === 'success'
+                ? 'bg-[#090d16]/92 border-emerald-400 text-emerald-100'
                 : n.type === 'warning'
-                ? 'bg-amber-950/90 border-amber-500/60 text-amber-200'
+                ? 'bg-[#090d16]/92 border-amber-400 text-amber-100'
                 : n.type === 'alert'
-                ? 'bg-rose-950/90 border-rose-500/60 text-rose-200'
-                : 'bg-zinc-900/90 border-zinc-700/80 text-zinc-200'
+                ? 'bg-rose-950/92 border-rose-500 text-rose-100'
+                : 'bg-[#090d16]/92 border-teal-400 text-zinc-100'
             }`}
           >
-            <div className="flex justify-between items-center font-bold">
-              <span>{n.title}</span>
-              <span className="text-[10px] text-zinc-400 font-normal">{n.timestamp}</span>
+            <div className="flex justify-between items-center font-bold gap-2">
+              <div className="flex items-center gap-1.5">
+                {n.code && (
+                  <span className="bg-rose-600 text-white font-mono text-[9px] font-black px-1.5 py-0.5 rounded">
+                    {n.code}
+                  </span>
+                )}
+                <span>{n.title}</span>
+              </div>
+              <span className="text-[9px] text-zinc-400 font-mono">{n.timestamp}</span>
             </div>
-            <p className="text-[11px] leading-snug">{n.message}</p>
+            <p className="text-[11px] leading-snug text-zinc-300 mt-0.5">{n.message}</p>
           </div>
         ))}
       </div>
 
-      {/* EkoPhone (Smartphone OS) */}
+      {/* Corner-Docked NoPixel Smartphone (Character holds phone in 3D while open!) */}
       <EkoPhone
         isOpen={isPhoneOpen}
         onClose={() => setIsPhoneOpen(false)}
         player={player}
         vitals={vitals}
         isNepaActive={isNepaActive}
+        weather={weather}
+        timeOfDay={timeOfDay}
+        activeMission={activeMission}
+        incomingCaller={incomingCaller}
+        onClearIncomingCall={() => setIncomingCaller(null)}
         onUpdatePlayer={setPlayer}
         onUpdateVitals={setVitals}
+        onStartMission={handleStartMission}
+        onStopMission={() => setActiveMission(null)}
         onStartMiniGame={handleStartMiniGame}
+        onSpawnVehicle={(vehicleId) => {
+          setSpawnVehicleRequest({ id: vehicleId, timestamp: Date.now() });
+          addNotification('Valet Delivered', 'Vehicle parked curbside — drive with W/A/S/D!', 'success');
+        }}
+        onClearWanted={() => setWantedStars(0)}
+        onSetWaypoint={handleSetDistrictWaypoint}
+        onSetWeather={setWeather}
+        onSetTimeOfDay={setTimeOfDay}
         onAddNotification={addNotification}
+        onFlyToCity={handleFlyToCity}
+        onEnterBuilding={(bId) => setActiveBuildingId(bId)}
       />
 
-      {/* Character Customizer & Origin Switcher */}
+      {/* Server Scoreboard & Fast-Spawn Modal [U] */}
+      {isScoreboardOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in select-none"
+          onClick={() => setIsScoreboardOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg bg-[#090d16] border border-white/15 rounded-3xl overflow-hidden shadow-2xl text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 bg-zinc-900 border-b border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users size={18} className="text-teal-400" />
+                <div>
+                  <h3 className="text-sm font-black uppercase">
+                    NoPixel V // Eko Server Roster ({SERVER_PLAYERS.length + 1}/64)
+                  </h3>
+                  <p className="text-[10px] text-zinc-400">Active Citizens & Fast-Spawn Bus</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsScoreboardOpen(false)}
+                className="p-1.5 rounded-full bg-zinc-800 hover:bg-rose-600 text-zinc-300 hover:text-white"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+              {/* Quick Spawn Selector */}
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
+                  <MapPin size={11} className="text-teal-400" /> Fast-Travel / Spawn Locations
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {SPAWN_POINTS.map((sp) => (
+                    <button
+                      key={sp.id}
+                      onClick={() => {
+                        audioEngine.playClick();
+                        setTeleportRequest({ x: sp.x, z: sp.z, ts: Date.now() });
+                        setIsScoreboardOpen(false);
+                        addNotification('Fast Travel', `Arrived at ${sp.label}.`, 'info');
+                      }}
+                      className="p-2.5 rounded-xl bg-zinc-900 hover:bg-teal-950/60 border border-white/10 hover:border-teal-400/50 text-left flex items-center gap-2 transition-colors"
+                    >
+                      <span className="text-base">{sp.icon}</span>
+                      <span className="text-xs font-bold text-zinc-100 truncate">{sp.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Active Players Table */}
+              <div className="space-y-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">
+                  Connected Citizens
+                </span>
+                <div className="rounded-2xl border border-white/10 overflow-hidden divide-y divide-white/5 text-xs">
+                  <div className="px-3.5 py-2 bg-teal-500/15 flex justify-between items-center font-bold">
+                    <span>
+                      #{player.stateId} {player.name} (YOU)
+                    </span>
+                    <span className="text-[11px] text-teal-300 font-mono">
+                      {player.job || 'Citizen'} • 18ms
+                    </span>
+                  </div>
+                  {SERVER_PLAYERS.map((sp, i) => (
+                    <div
+                      key={sp.name}
+                      className="px-3.5 py-2 bg-zinc-900/70 flex justify-between items-center"
+                    >
+                      <span className="text-zinc-200 font-medium">
+                        #{1050 + i} {sp.name}
+                      </span>
+                      <span className="text-[11px] text-zinc-400 font-mono">
+                        {sp.job} • {sp.ping}ms
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NoPixel [TAB] Grid Inventory & 24/7 Supply Shop */}
+      <NoPixelInventoryModal
+        isOpen={isInventoryOpen}
+        onClose={() => setIsInventoryOpen(false)}
+        player={player}
+        onUseItem={handleUseItem}
+        onBuyItem={handleBuyItem}
+      />
+
+      {/* NoPixel [F1] Radial Action & Emote Wheel */}
+      <NoPixelRadialMenu
+        isOpen={isRadialOpen}
+        currentEmote={emote}
+        onClose={() => setIsRadialOpen(false)}
+        onSelectEmote={(em) => setEmote(em)}
+        onOpenPhone={() => setIsPhoneOpen(true)}
+        onOpenInventory={() => setIsInventoryOpen(true)}
+        onOpenCustomizer={() => setIsCustomizerOpen(true)}
+        onOpenHelp={() => setIsHelpOpen(true)}
+        onSpawnVehicle={(id) => {
+          setSpawnVehicleRequest({ id, timestamp: Date.now() });
+          addNotification('Valet Spawned', 'Hop in and drive with W/A/S/D!', 'success');
+        }}
+        onTeleport={(x, z, label) => {
+          setTeleportRequest({ x, z, ts: Date.now() });
+          addNotification('Fast Travel', `Teleported to ${label}.`, 'info');
+        }}
+        onQuickHealArmor={() => {
+          runActionBar('APPLYING IFAK & KEVLAR PLATES...', 1000, () => {
+            audioEngine.playUpNepa();
+            setVitals((v) => ({ ...v, health: 100, armor: 100, stress: 0 }));
+            addNotification('Vitals Restored', '100% Health & Armor applied!', 'success');
+          });
+        }}
+        onCycleCamera={() =>
+          setCameraMode((c) =>
+            c === 'chase' ? 'hood' : c === 'hood' ? 'isometric' : 'chase'
+          )
+        }
+        onTriggerRandomEvent={handleTriggerRandomEvent}
+      />
+
+      {/* Fleeca Bank Vault Thermite Heist Modal */}
+      <NoPixelHeistModal
+        isOpen={isHeistOpen}
+        onClose={() => setIsHeistOpen(false)}
+        onSuccess={(cashReward, cryptoReward) => {
+          const pier = DISTRICTS.find((d) => d.id === 'lagoon')!;
+          setPlayer((prev) => ({
+            ...prev,
+            cash: prev.cash + cashReward,
+            cryptoBalance: (prev.cryptoBalance || 15) + cryptoReward,
+          }));
+          setVitals((prev) => ({
+            ...prev,
+            streetCred: Math.min(100, prev.streetCred + 20),
+          }));
+          setWantedStars((w) => Math.min(5, Math.max(3, w + 3)));
+          setActiveMission({
+            jobKind: 'heist',
+            title: 'Fleeca Getaway',
+            stage: 1,
+            objective: 'Escape PD & launder loot bags at Lagoon Pier',
+            target: {
+              id: 'heist-drop-' + Date.now(),
+              x: pier.x,
+              z: pier.z,
+              label: 'Lagoon Pier Drop',
+              color: '#a855f7',
+            },
+            reward: 350000,
+            completedRuns: 1,
+            earnedThisShift: cashReward,
+            startedAt: Date.now(),
+          });
+          audioEngine.playDispatchAlert();
+          addNotification(
+            'Vault Breached! Escape Now!',
+            `Grabbed ₦${cashReward.toLocaleString()} + ${cryptoReward} QBit! Drive to Lagoon Pier to launder extra ₦350k!`,
+            'dispatch',
+            '10-90'
+          );
+        }}
+        onFail={() => {
+          setWantedStars((w) => Math.min(5, Math.max(2, w + 2)));
+          audioEngine.playDispatchAlert();
+          addNotification(
+            'Silent Alarm Triggered!',
+            'Security lockdown at Fleeca Bank! Police units responding Code-3!',
+            'dispatch',
+            '10-90'
+          );
+        }}
+      />
+
+      {/* Dynamic City RP Encounter Modal */}
+      <RandomEventModal
+        event={activeRandomEvent}
+        onClose={() => setActiveRandomEvent(null)}
+        onSelectChoice={(c) => {
+          if (c.cashDelta) {
+            setPlayer((p) => ({ ...p, cash: Math.max(0, p.cash + c.cashDelta!) }));
+          }
+          if (c.credDelta || c.stressDelta || c.healthDelta) {
+            setVitals((v) => ({
+              ...v,
+              health: Math.max(10, Math.min(100, v.health + (c.healthDelta || 0))),
+              streetCred: Math.max(0, Math.min(100, v.streetCred + (c.credDelta || 0))),
+              stress: Math.max(0, Math.min(100, v.stress + (c.stressDelta || 0))),
+            }));
+          }
+          if (c.wantedDelta) {
+            setWantedStars((w) => Math.max(0, Math.min(5, w + c.wantedDelta!)));
+          }
+        }}
+      />
+
+      {/* Suburban Clothing & 3D Character Customizer */}
       <CharacterCustomizer
         isOpen={isCustomizerOpen}
         onClose={() => setIsCustomizerOpen(false)}
         player={player}
         onSave={(updated) => {
           setPlayer(updated);
-          addNotification('Wardrobe Updated', 'Avatar appearance changed!', 'success');
+          addNotification('Outfit Updated', '3D appearance updated!', 'success');
         }}
       />
 
-      {/* Help & Tutorial */}
-      <HelpTutorialModal
-        isOpen={isHelpOpen}
-        onClose={() => setIsHelpOpen(false)}
-      />
+      {/* Controls & RP Guide */}
+      <HelpTutorialModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
 
-      {/* Danfo Conductor Arcade Mini-Game */}
+      {/* Danfo Conductor Arcade Shift */}
       <DanfoMiniGame
         isOpen={isDanfoOpen}
         onClose={() => setIsDanfoOpen(false)}
@@ -270,62 +1999,62 @@ export default function LagosLifeGamePage() {
           setPlayer((prev) => ({ ...prev, cash: prev.cash + earnings }));
           setVitals((prev) => ({
             ...prev,
-            energy: Math.max(0, prev.energy - 25),
+            energy: Math.max(0, prev.energy - 15),
             streetCred: Math.min(100, prev.streetCred + cred),
           }));
           addNotification(
-            'Danfo Shift Finished!',
-            `Pocketed ₦${earnings.toLocaleString()} and gained ${cred} Street Cred!`,
+            'Transit Shift Complete!',
+            `Pocketed ₦${earnings.toLocaleString()} and +${cred} Cred!`,
             'success'
           );
         }}
       />
 
-      {/* Tech Bro Sprint Mini-Game */}
+      {/* Tech Bro Fintech Sprint */}
       <TechBroMiniGame
         isOpen={isTechBroOpen}
         onClose={() => setIsTechBroOpen(false)}
         hasGenerator={player.inventory.generator}
         generatorFuelLitres={player.inventory.generatorFuelLitres}
         onComplete={(salary, cred) => {
-          setPlayer((prev) => ({ ...prev, cash: prev.cash + salary }));
+          setPlayer((prev) => ({ ...prev, bankBalance: prev.bankBalance + salary }));
           setVitals((prev) => ({
             ...prev,
-            energy: Math.max(0, prev.energy - 30),
+            energy: Math.max(0, prev.energy - 20),
             streetCred: Math.min(100, prev.streetCred + cred),
           }));
           addNotification(
-            'Fintech Deploy Succeeded!',
-            `Earned ₦${salary.toLocaleString()} wire payout!`,
+            'Sprint Deployed!',
+            `₦${salary.toLocaleString()} wired to Fleeca Bank!`,
             'success'
           );
         }}
       />
 
-      {/* Afrobeats Hit Maker Studio Mini-Game */}
+      {/* Afrobeats Studio */}
       <AfrobeatsMiniGame
         isOpen={isAfrobeatsOpen}
         onClose={() => setIsAfrobeatsOpen(false)}
         onComplete={(royalties, fans) => {
           setPlayer((prev) => ({
             ...prev,
-            cash: prev.cash + royalties,
+            bankBalance: prev.bankBalance + royalties,
             musicTracksReleased: prev.musicTracksReleased + 1,
             fansCount: prev.fansCount + fans,
           }));
           setVitals((prev) => ({
             ...prev,
-            streetCred: Math.min(100, prev.streetCred + 25),
+            streetCred: Math.min(100, prev.streetCred + 20),
           }));
           addNotification(
-            'Afrobeats Chart Topper!',
-            `Track released! Earned ₦${royalties.toLocaleString()} in royalties.`,
+            'Hit Single Dropped!',
+            `Earned ₦${royalties.toLocaleString()} in streaming royalties!`,
             'success'
           );
         }}
       />
 
-      {/* Amala Shitta Canteen Modal */}
+      {/* Amala Shitta Canteen */}
       <AmalaModal
         isOpen={isAmalaOpen}
         onClose={() => setIsAmalaOpen(false)}
@@ -335,18 +2064,15 @@ export default function LagosLifeGamePage() {
           setVitals((prev) => ({
             ...prev,
             hunger: Math.min(100, prev.hunger + hungerRest),
+            thirst: Math.min(100, prev.thirst + 40),
             energy: Math.min(100, prev.energy + energyRest),
             stress: Math.max(0, prev.stress - stressDown),
           }));
-          addNotification(
-            'Belleful! 🍲',
-            `Ate hot Amala at Shitta. Vitals replenished!`,
-            'success'
-          );
+          addNotification('Amala Shitta 🍲', 'Hot plate finished — vitals restored!', 'success');
         }}
       />
 
-      {/* Club Quilox VIP Nightlife Modal */}
+      {/* Club Quilox VIP */}
       <QuiloxModal
         isOpen={isQuiloxOpen}
         onClose={() => setIsQuiloxOpen(false)}
@@ -359,14 +2085,98 @@ export default function LagosLifeGamePage() {
             streetCred: Math.min(100, prev.streetCred + cred),
             stress: Math.max(0, prev.stress - stressRelief),
           }));
-          addNotification(
-            'Quilox Big Boy Mode! 🍾',
-            `Popped bottles! Gained +${cred} Street Cred!`,
-            'success'
-          );
+          addNotification('Quilox VIP 🍾', `Gained +${cred} Street Cred!`, 'success');
         }}
       />
 
+      {/* Full-Screen Interactive Satellite & Postal City Map [N] */}
+      <NoPixelCityMapModal
+        isOpen={isMapOpen}
+        onClose={() => setIsMapOpen(false)}
+        worldState={worldState}
+        missionTarget={activeMission?.target ?? null}
+        waypoint={waypoint}
+        activeCity={player.activeCity || 'lagos'}
+        onSetWaypoint={setWaypoint}
+        onTeleport={(x, z, label) => {
+          setTeleportRequest({ x, z, ts: Date.now() });
+          addNotification('Fast Travel', `Arrived at ${label}.`, 'info');
+        }}
+        onFlyToCity={handleFlyToCity}
+        onEnterBuilding={(bId) => setActiveBuildingId(bId)}
+      />
+
+      {/* Interactive Enterable Building Interiors (Home, Mall, Computer Village, Bank, Airport, Gas/Solar, Police/Security HQ, Tech Hub) */}
+      <BuildingInteriorModal
+        buildingId={activeBuildingId}
+        onClose={() => setActiveBuildingId(null)}
+        player={player}
+        vitals={vitals}
+        isNepaActive={isNepaActive}
+        onUpdatePlayer={setPlayer}
+        onUpdateVitals={setVitals}
+        onAddNotification={addNotification}
+        onStartMission={handleStartMission}
+        onOpenTechMiniGame={() => setIsTechBroOpen(true)}
+        onOpenHeist={() => setIsHeistOpen(true)}
+        onOpenCustomizer={() => setIsCustomizerOpen(true)}
+        onOpenInventory={() => setIsInventoryOpen(true)}
+        onOpenBennys={() => setIsBennysOpen(true)}
+        onFlyToCity={handleFlyToCity}
+      />
+
+      {/* Benny's Original Motorworks & Ron Petrol Service Bay */}
+      <BennysCustomsModal
+        isOpen={isBennysOpen}
+        onClose={() => setIsBennysOpen(false)}
+        vehicle={worldState.vehicle}
+        playerCash={player.cash}
+        playerBank={player.bankBalance}
+        onTune={(opts, cost, label) => {
+          if (player.cash < cost && player.bankBalance < cost) {
+            addNotification(
+              'Insufficient Funds',
+              `Need ₦${cost.toLocaleString()} for ${label}.`,
+              'warning'
+            );
+            return;
+          }
+          audioEngine.playCashEarn();
+          setPlayer((p) =>
+            p.cash >= cost
+              ? { ...p, cash: p.cash - cost }
+              : { ...p, bankBalance: p.bankBalance - cost }
+          );
+          setTuneVehicleRequest({ ...opts, ts: Date.now() });
+          addNotification('Benny’s Motorworks 🔧', `Installed: ${label}!`, 'success');
+        }}
+      />
+
+      {/* 3D Sidewalk Citizen RP Interaction Modal */}
+      <PedInteractionModal
+        pedName={activePedName}
+        onClose={() => setActivePedName(null)}
+        playerCash={player.cash}
+        streetCred={vitals.streetCred}
+        onOutcome={(fx) => {
+          if (fx.cashDelta) {
+            setPlayer((p) => ({ ...p, cash: Math.max(0, p.cash + fx.cashDelta!) }));
+          }
+          if (fx.credDelta || fx.stressDelta || fx.healthDelta) {
+            setVitals((v) => ({
+              ...v,
+              health: Math.max(10, Math.min(100, v.health + (fx.healthDelta || 0))),
+              streetCred: Math.max(0, Math.min(100, v.streetCred + (fx.credDelta || 0))),
+              stress: Math.max(0, Math.min(100, v.stress + (fx.stressDelta || 0))),
+            }));
+          }
+          if (fx.crime) {
+            handleCrime(fx.crime);
+          } else {
+            addNotification(activePedName || 'Street Citizen', fx.message, 'info');
+          }
+        }}
+      />
     </main>
   );
 }

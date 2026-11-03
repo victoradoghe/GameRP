@@ -1,27 +1,193 @@
 export type SocialClass = 'nepo' | 'lapo';
+export type CityId = 'lagos' | 'abuja';
+export type PhoneOS = 'ios' | 'android';
+
+export interface PhoneModelSpec {
+  id: string;
+  name: string;
+  brand: string;
+  os: PhoneOS;
+  osVersion: string;
+  releaseYear: number;
+  price: number;
+  frameColor: string;
+  accentColor: string;
+  cameraSpec: string;
+  chipset: string;
+  batteryBonus: number;
+  credBonus: number;
+}
+
+export interface LaptopModelSpec {
+  id: string;
+  name: string;
+  brand: string;
+  chip: string;
+  ram: string;
+  price: number;
+  payMultiplier: number; // 1.15 .. 1.90x on Dev & Bank jobs
+  description: string;
+  icon: string;
+}
 
 export interface Vitals {
   health: number; // 0 - 100
+  armor: number; // 0 - 100
   hunger: number; // 0 - 100 (100 is full)
-  energy: number; // 0 - 100
+  thirst: number; // 0 - 100 (100 is hydrated)
+  energy: number; // 0 - 100 (Stamina)
   streetCred: number; // 0 - 100 (Reputation)
   stress: number; // 0 - 100 (0 is chill)
 }
 
+export interface InventoryItem {
+  id: string;
+  name: string;
+  category: 'weapon' | 'medical' | 'tool' | 'food' | 'tech' | 'key';
+  icon: string;
+  weight: number; // in kg
+  quantity: number;
+  durability: number; // 0 - 100
+  hotkey?: number; // 1 - 5
+  description: string;
+  price?: number;
+}
+
+export type VehicleCategory = 'super' | 'suv' | 'transit' | 'police' | 'sedan';
+
+export interface VehicleTelemetry {
+  isDriving: boolean;
+  vehicleId: string | null;
+  vehicleName: string;
+  vehicleCategory: VehicleCategory;
+  speedKmh: number;
+  rpm: number; // 0 - 100
+  gear: string;
+  fuel: number; // 0 - 100
+  engineHealth: number; // 0 - 100
+  seatbeltOn: boolean;
+  lightsOn: boolean;
+  sirenOn: boolean;
+}
+
+export interface OwnedVehicle {
+  id: string;
+  name: string;
+  category: VehicleCategory;
+  plate: string;
+  color: string;
+  topSpeedKmh: number;
+  price: number;
+  fuel: number;
+  condition: number;
+}
+
+export type Emote = 'none' | 'wave' | 'dance' | 'handsup' | 'sit' | 'pushups' | 'salute' | 'facepalm';
+export type Weather = 'clear' | 'cloudy' | 'rain' | 'fog';
+
+export interface MapTarget {
+  id: string;
+  x: number;
+  z: number;
+  label: string;
+  color: string;
+}
+
+export interface WorldRealtimeState {
+  x: number;
+  z: number;
+  heading: number; // radians, character / vehicle facing
+  cameraYaw: number; // radians, camera look direction (radar rotation)
+  cameraMode: 'chase' | 'isometric' | 'hood';
+  streetName: string;
+  isSprinting: boolean;
+  nearVehicle: { id: string; name: string; color: string } | null;
+  nearInteractable: { id: string; name: string; actionLabel: string } | null;
+  vehicle: VehicleTelemetry;
+  police: { x: number; z: number }[];
+  missionDistance: number | null;
+}
+
+export interface ChatMessage {
+  id: string;
+  sender: 'player' | 'contact';
+  text: string;
+  timestamp: string;
+}
+
+export interface CallOption {
+  label: string;
+  response: string;
+  effect?: {
+    cashDelta?: number;
+    credDelta?: number;
+    stressDelta?: number;
+    clearWanted?: boolean;
+    triggerHeist?: boolean;
+    spawnVehicleId?: string;
+    healPlayer?: boolean;
+  };
+}
+
+export interface PhoneContact {
+  id: string;
+  name: string;
+  role: string;
+  number: string;
+  avatar: string;
+  color: string;
+  isOnline: boolean;
+  greeting: string;
+  callOptions: CallOption[];
+  quickTexts: {
+    playerText: string;
+    replyText: string;
+    effect?: {
+      cashDelta?: number;
+      credDelta?: number;
+      stressDelta?: number;
+      waypointDistrict?: LagosDistrict;
+    };
+  }[];
+}
+
+export interface RandomLifeEvent {
+  id: string;
+  title: string;
+  category: 'police' | 'street' | 'romance' | 'hustle' | 'emergency';
+  icon: string;
+  description: string;
+  choices: {
+    label: string;
+    outcomeText: string;
+    cashDelta?: number;
+    credDelta?: number;
+    healthDelta?: number;
+    stressDelta?: number;
+    wantedDelta?: number;
+  }[];
+}
+
 export interface PlayerStats {
   id: string;
+  stateId: number;
+  phoneNumber: string;
   name: string;
   tagline: string;
   origin: SocialClass;
-  cash: number; // in Naira ₦
+  cash: number;
   bankBalance: number;
+  cryptoBalance: number;
   loanBalance: number;
   outfit: {
     style: 'agbada' | 'senator' | 'street' | 'techbro' | 'drip';
     color: string;
     hat: 'none' | 'cap' | 'sunglasses';
+    skin?: string;
+    pants?: string;
   };
   job: string | null;
+  isOnDuty: boolean;
   salary: number;
   housing: 'squatting' | 'face-me-i-face-you' | 'mainland-flat' | 'lekki-duplex' | 'ikoyi-mansion';
   rentDueDays: number;
@@ -34,33 +200,57 @@ export interface PlayerStats {
     laptop: boolean;
     vipPassQuilox: boolean;
   };
+  activeCity?: CityId;
+  phoneModelId?: string;
+  ownedPhones?: string[];
+  laptopModelId?: string;
+  ownedLaptops?: string[];
+  nepaUnitsKwh?: number;
+  nepaBillArrears?: number;
+  solarKw?: number; // 0 = none, 5 = 5kVA Solar, 10 = 10kVA Hybrid Solar
+  homeSafeCash?: number;
+  items: InventoryItem[];
+  ownedVehicles: string[];
   musicTracksReleased: number;
   fansCount: number;
 }
 
-export type LagosDistrict = 
-  | 'yaba' // Tech Mainland
-  | 'shitta' // Food & Culture
-  | 'lekki' // Islands & Affluence
-  | 'quilox' // Nightlife VIP
-  | 'computervillage' // Hustle & Electronics
-  | 'lagoon'; // Third Mainland Bridge view
+export type LagosDistrict =
+  | 'shitta'
+  | 'fleeca'
+  | 'pillbox'
+  | 'mrpd'
+  | 'yaba'
+  | 'quilox'
+  | 'computervillage'
+  | 'gas'
+  | 'lekki'
+  | 'clothing'
+  | 'lagoon'
+  | 'home'
+  | 'airport';
 
 export interface DistrictInfo {
   id: LagosDistrict;
   name: string;
+  code: string;
   tagline: string;
-  x: number;
+  x: number; // interaction marker position (on the sidewalk)
   z: number;
+  blockX: number; // city block that holds the landmark building
+  blockZ: number;
   description: string;
   color: string;
+  blipIcon: string;
+  actionLabel: string;
 }
 
 export interface NotificationItem {
   id: string;
   title: string;
+  code?: string;
   message: string;
-  type: 'info' | 'warning' | 'success' | 'alert';
+  type: 'info' | 'warning' | 'success' | 'alert' | 'dispatch';
   timestamp: string;
 }
 
@@ -74,4 +264,37 @@ export interface TweetItem {
   likes: number;
   retweets: number;
   timeAgo: string;
+}
+
+// ---------- Jobs / in-world missions ----------
+export type JobKind =
+  | 'delivery'
+  | 'taxi'
+  | 'police'
+  | 'ems'
+  | 'mechanic'
+  | 'heist'
+  | 'race'
+  | 'security'
+  | 'banker'
+  | 'developer';
+
+export interface ActiveMission {
+  jobKind: JobKind;
+  title: string;
+  stage: number; // 0 = go to pickup, 1 = go to dropoff ...
+  objective: string;
+  target: MapTarget;
+  reward: number;
+  completedRuns: number;
+  earnedThisShift: number;
+  startedAt: number;
+}
+
+export interface ChatLine {
+  id: string;
+  kind: 'me' | 'ooc' | 'system' | 'do' | 'npc';
+  author: string;
+  text: string;
+  ts: number;
 }
