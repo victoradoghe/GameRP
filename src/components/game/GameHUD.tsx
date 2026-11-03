@@ -18,6 +18,7 @@ import {
   Home,
   Plane,
   DoorOpen,
+  Settings,
 } from 'lucide-react';
 import {
   PlayerStats,
@@ -29,6 +30,7 @@ import {
   ChatLine,
   Emote,
   Weather,
+  GraphicsSettings,
 } from '@/lib/types';
 import { NoPixelRadar } from './NoPixelRadar';
 import { NoPixelVehicleHUD } from './NoPixelVehicleHUD';
@@ -74,6 +76,9 @@ interface GameHUDProps {
   onSetWaypoint: (target: MapTarget | null) => void;
   onInteractPromptClick: () => void;
   onVehicleAction: (action: 'enter_exit' | 'seatbelt' | 'lights' | 'siren') => void;
+  onOpenItemWheel?: () => void;
+  graphicsSettings?: GraphicsSettings;
+  onChangeGraphics?: (g: GraphicsSettings) => void;
 }
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -117,8 +122,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onSetWaypoint,
   onInteractPromptClick,
   onVehicleAction,
+  onOpenItemWheel,
+  graphicsSettings,
+  onChangeGraphics,
 }) => {
   const [chatDraft, setChatDraft] = useState('');
+  const [showGfx, setShowGfx] = useState(false);
   const chatInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -374,11 +383,108 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <button
               onClick={onOpenInventory}
               className="px-2.5 py-1.5 rounded-xl bg-[#090d16]/85 hover:bg-zinc-800 border border-white/10 text-zinc-200 text-[11px] font-semibold flex items-center gap-1 transition-colors"
-              title="Open Pockets & 24/7 Shop [TAB]"
+              title="Open Pockets & 24/7 Shop [I]"
             >
               <Package size={13} className="text-sky-400" />
-              <span className="font-mono text-[10px] text-zinc-400">[TAB]</span>
+              <span className="font-mono text-[10px] text-zinc-400">[I]</span>
             </button>
+
+            {onOpenItemWheel && (
+              <button
+                onClick={onOpenItemWheel}
+                className="px-2.5 py-1.5 rounded-xl bg-[#090d16]/85 hover:bg-zinc-800 border border-amber-500/30 text-amber-300 text-[11px] font-semibold flex items-center gap-1 transition-colors"
+                title="GTA VI Item Wheel — Equip / Use / Remove [TAB]"
+              >
+                <span className="text-[12px]">🎯</span>
+                <span className="font-mono text-[10px] text-zinc-400">[TAB]</span>
+              </button>
+            )}
+
+            {graphicsSettings && onChangeGraphics && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowGfx((s) => !s)}
+                  className="px-2.5 py-1.5 rounded-xl bg-[#090d16]/85 hover:bg-zinc-800 border border-white/10 text-zinc-200 text-[11px] font-semibold flex items-center gap-1 transition-colors"
+                  title="Graphics & Resolution Settings"
+                >
+                  <Settings size={13} className="text-zinc-300" />
+                  <span className="font-mono text-[10px] text-zinc-400">
+                    {Math.round(graphicsSettings.resolutionScale * 100)}%
+                  </span>
+                </button>
+                {showGfx && (
+                  <div className="absolute right-0 top-9 w-64 rounded-2xl bg-[#090d16]/96 backdrop-blur-xl border border-white/15 p-3 shadow-2xl space-y-3 z-30">
+                    <div className="text-[10px] font-black uppercase tracking-wider text-teal-300">
+                      Graphics &amp; Resolution
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-[11px] text-zinc-300">
+                        <span>Render Resolution</span>
+                        <span className="font-mono text-white">
+                          {Math.round(graphicsSettings.resolutionScale * 100)}%
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-5 gap-1">
+                        {[0.5, 0.75, 1.0, 1.25, 1.5].map((sc) => (
+                          <button
+                            key={sc}
+                            onClick={() => onChangeGraphics({ ...graphicsSettings, resolutionScale: sc })}
+                            className={`py-1 rounded-lg text-[10px] font-bold ${
+                              graphicsSettings.resolutionScale === sc
+                                ? 'bg-teal-500 text-black'
+                                : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                            }`}
+                          >
+                            {Math.round(sc * 100)}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="range"
+                        min={0.5}
+                        max={1.5}
+                        step={0.05}
+                        value={graphicsSettings.resolutionScale}
+                        onChange={(e) =>
+                          onChangeGraphics({
+                            ...graphicsSettings,
+                            resolutionScale: parseFloat(e.target.value),
+                          })
+                        }
+                        className="w-full accent-teal-400"
+                      />
+                      <div className="flex justify-between text-[9px] font-mono text-zinc-500">
+                        <span>Performance</span>
+                        <span>Ultra / Supersample</span>
+                      </div>
+                    </div>
+                    {(
+                      [
+                        ['bloomEnabled', 'HDR Bloom Glow'],
+                        ['shadowsEnabled', 'Soft Shadows'],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <button
+                        key={key}
+                        onClick={() =>
+                          onChangeGraphics({ ...graphicsSettings, [key]: !graphicsSettings[key] })
+                        }
+                        className="w-full flex items-center justify-between text-[11px] text-zinc-200"
+                      >
+                        <span>{label}</span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                            graphicsSettings[key] ? 'bg-emerald-500 text-black' : 'bg-zinc-700 text-zinc-300'
+                          }`}
+                        >
+                          {graphicsSettings[key] ? 'ON' : 'OFF'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {onOpenHome && (
               <button

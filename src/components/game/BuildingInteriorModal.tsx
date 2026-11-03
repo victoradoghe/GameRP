@@ -28,12 +28,15 @@ import {
   LagosDistrict,
   CityId,
   JobKind,
+  BankVaultSpec,
 } from '@/lib/types';
 import {
   PHONE_MODELS_CATALOG,
   LAPTOP_MODELS_CATALOG,
   FLIGHT_ROUTES_CATALOG,
   REAL_ESTATE,
+  BANK_VAULTS_CATALOG,
+  AIRCRAFT_CATALOG,
 } from '@/lib/gameState';
 import { audioEngine } from '@/lib/audioEngine';
 
@@ -59,6 +62,10 @@ interface BuildingInteriorModalProps {
   onOpenInventory: () => void;
   onOpenBennys: () => void;
   onFlyToCity: (targetCity: CityId, airlineName: string) => void;
+  vaultCamsDisabled?: Partial<Record<BankVaultSpec['id'], boolean>>;
+  onDisableCameras?: (bankId: BankVaultSpec['id']) => void;
+  onBreachVault?: (bankId: BankVaultSpec['id']) => void;
+  onSpawnVehicle?: (vehicleId: string) => void;
 }
 
 const BANK_CASES = [
@@ -114,6 +121,10 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
   onOpenInventory,
   onOpenBennys,
   onFlyToCity,
+  vaultCamsDisabled,
+  onDisableCameras,
+  onBreachVault,
+  onSpawnVehicle,
 }) => {
   const [techTab, setTechTab] = useState<'phones' | 'laptops' | 'os_compare'>('phones');
   const [phoneOsFilter, setPhoneOsFilter] = useState<'all' | 'ios' | 'android'>('all');
@@ -622,7 +633,7 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
   }
 
   // ==================== 2. COMPUTER VILLAGE / BANEX TECH & PHONE MALL ====================
-  if (buildingId === 'computervillage') {
+  if (buildingId === 'computervillage' || buildingId === 'istore') {
     const ownedPhones = player.ownedPhones || ['tecno-phantom-v2', 'iphone-15-pro'];
     const ownedLaptops = player.ownedLaptops || ['thinkpad-x1'];
 
@@ -1242,9 +1253,17 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
   }
 
   // ==================== 4. BANK BRANCH INTERIOR (BANKER JOB, TELLER, VAULT) ====================
-  if (buildingId === 'fleeca') {
+  if (buildingId === 'fleeca' || buildingId === 'gtbank' || buildingId === 'cbn') {
     const activeCase = BANK_CASES[bankCaseIdx % BANK_CASES.length];
-    const bankerPay = Math.round(55000 * equippedLaptop.payMultiplier);
+    const bankerPay = Math.round(
+      (buildingId === 'cbn' ? 95000 : buildingId === 'gtbank' ? 72000 : 55000) *
+        equippedLaptop.payMultiplier
+    );
+    const vaultSpec =
+      BANK_VAULTS_CATALOG.find((v) => v.id === buildingId) ?? BANK_VAULTS_CATALOG[0];
+    const camsOff = !!vaultCamsDisabled?.[vaultSpec.id];
+    const ownedItemIds = new Set((player.items || []).map((i) => i.id));
+    const bankTitle = currentCity === 'abuja' ? vaultSpec.abujaName : vaultSpec.name;
 
     const handleBankDecision = (approve: boolean) => {
       const correct = approve ? !activeCase.isFraud : activeCase.isFraud;
@@ -1291,11 +1310,7 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
                 <span className="text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
                   INSIDE BANKING HALL • CORPORATE & TELLER FLOOR
                 </span>
-                <h2 className="text-base font-black text-white mt-0.5">
-                  {currentCity === 'abuja'
-                    ? 'Central Bank (CBN) & Zenith Commercial HQ (Abuja CBD)'
-                    : 'Zenith & Fleeca Bank Headquarters (Victoria Island, Lagos)'}
-                </h2>
+                <h2 className="text-base font-black text-white mt-0.5">{bankTitle}</h2>
               </div>
             </div>
             <button
@@ -1409,23 +1424,76 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
               </div>
 
               <div className="p-4 rounded-2xl bg-rose-950/35 border border-rose-500/40 flex flex-col justify-between gap-2.5">
-                <div>
-                  <h4 className="text-xs font-black uppercase text-rose-300">
-                    🔐 High-Security Basement Vault
-                  </h4>
-                  <p className="text-[11px] text-zinc-300 mt-1">
-                    Requires a Red-Dongle Hack Laptop. Crack the thermite security matrix to loot up to ₦1,250,000 + QBit Crypto!
-                  </p>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-xs font-black uppercase text-rose-300">
+                      🔐 Tier {vaultSpec.tier} Vault Break-In
+                    </h4>
+                    <span
+                      className="text-[9px] font-mono font-bold px-2 py-0.5 rounded"
+                      style={{ background: vaultSpec.color + '33', color: vaultSpec.color }}
+                    >
+                      {vaultSpec.securityLevel}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300">{vaultSpec.description}</p>
+                  <div className="grid grid-cols-3 gap-1.5 text-center text-[10px] font-mono">
+                    <div className="p-1.5 rounded-lg bg-black/50 border border-white/10">
+                      <div className="text-zinc-500">LOOT</div>
+                      <div className="font-black text-amber-300">
+                        ₦{(vaultSpec.minLoot / 1_000_000).toFixed(1)}M–{(vaultSpec.maxLoot / 1_000_000).toFixed(0)}M
+                      </div>
+                    </div>
+                    <div className="p-1.5 rounded-lg bg-black/50 border border-white/10">
+                      <div className="text-zinc-500">CCTV</div>
+                      <div className={`font-black ${camsOff ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {camsOff ? 'LOOPED' : `${vaultSpec.camerasCount} LIVE`}
+                      </div>
+                    </div>
+                    <div className="p-1.5 rounded-lg bg-black/50 border border-white/10">
+                      <div className="text-zinc-500">GUARDS</div>
+                      <div className="font-black text-white">{vaultSpec.guardsCount} ARMED</div>
+                    </div>
+                  </div>
+                  <div className="text-[10px] font-mono text-zinc-400 space-y-0.5">
+                    <div>
+                      {ownedItemIds.has('cctv_jammer') ? '✅' : '⬜'} CCTV Signal Jammer (instant camera loop)
+                    </div>
+                    <div>
+                      {ownedItemIds.has('plasma_drill') ? '✅' : '⬜'} Plasma Vault Drill (+20% loot)
+                    </div>
+                    <div>
+                      {ownedItemIds.has('c4_thermite') ? '✅' : '⬜'} C4 Thermite Charge
+                      {vaultSpec.tier === 3 ? ' (REQUIRED for CBN)' : ' (+10% loot)'}
+                    </div>
+                  </div>
                 </div>
-                <button
-                  onClick={() => {
-                    onClose();
-                    onOpenHeist();
-                  }}
-                  className="w-full py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs"
-                >
-                  💻 Breach Vault Door (Heist)
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    disabled={camsOff}
+                    onClick={() => {
+                      onClose();
+                      onDisableCameras?.(vaultSpec.id);
+                    }}
+                    className={`py-2 rounded-xl font-black text-[11px] ${
+                      camsOff
+                        ? 'bg-emerald-500/20 text-emerald-300 cursor-default'
+                        : 'bg-zinc-800 hover:bg-zinc-700 text-white'
+                    }`}
+                  >
+                    {camsOff ? '✓ Cameras Looped' : '📹 Disable CCTV Cameras'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      onClose();
+                      if (onBreachVault) onBreachVault(vaultSpec.id);
+                      else onOpenHeist();
+                    }}
+                    className="py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-[11px]"
+                  >
+                    💣 Breach Tier {vaultSpec.tier} Vault
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1524,6 +1592,72 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
                   </button>
                 </div>
               ))}
+            </div>
+
+            {/* Private Jet Hangar — Buy & Fly Your Own Aircraft */}
+            <div className="p-4 rounded-2xl bg-amber-950/25 border border-amber-500/35 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <span className="text-[10px] font-mono uppercase text-amber-300 font-bold block">
+                    EXECUTIVE HANGARS 01–03 • PRIVATE AVIATION
+                  </span>
+                  <h3 className="text-sm font-black text-white">Buy &amp; Fly Your Own Private Jet</h3>
+                </div>
+                <span className="text-[10px] font-mono text-zinc-400">
+                  Fly: W throttle • SPACE climb • C descend • SHIFT afterburner
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {AIRCRAFT_CATALOG.map((ac) => {
+                  const owned = (player.ownedPlanes || []).includes(ac.id);
+                  return (
+                    <div
+                      key={ac.id}
+                      className="p-3 rounded-2xl bg-zinc-900 border border-white/10 flex flex-col justify-between gap-2"
+                    >
+                      <div className="space-y-1">
+                        <div
+                          className="h-12 rounded-xl flex items-center justify-center text-2xl"
+                          style={{ background: `linear-gradient(135deg, ${ac.color}, ${ac.accent})` }}
+                        >
+                          ✈️
+                        </div>
+                        <h4 className="text-xs font-black text-white">{ac.name}</h4>
+                        <p className="text-[10px] font-mono text-zinc-400">
+                          {ac.manufacturer} • {ac.seats} seats • {ac.cruiseKmh} km/h
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (!owned) {
+                            if (!chargeMoney(ac.price)) return;
+                            audioEngine.playCashEarn();
+                            onUpdatePlayer((p) => ({
+                              ...p,
+                              ownedPlanes: [...(p.ownedPlanes || []), ac.id],
+                            }));
+                            onAddNotification(
+                              'Aircraft Purchased ✈️',
+                              `${ac.name} registered to you — wheeling out of the hangar now!`,
+                              'success'
+                            );
+                          }
+                          onClose();
+                          onStepOutside?.();
+                          setTimeout(() => onSpawnVehicle?.(ac.id), 400);
+                        }}
+                        className={`w-full py-2 rounded-xl font-black text-xs ${
+                          owned
+                            ? 'bg-emerald-500 hover:bg-emerald-400 text-black'
+                            : 'bg-amber-500 hover:bg-amber-400 text-black'
+                        }`}
+                      >
+                        {owned ? '🛫 Taxi to Runway & Fly' : `Buy (${formatNaira(ac.price)})`}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>

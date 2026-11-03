@@ -40,6 +40,8 @@ import {
   JobKind,
   Weather,
   CityId,
+  GraphicsSettings,
+  BankTransaction,
 } from '@/lib/types';
 import {
   JOBS_DATABASE,
@@ -51,6 +53,9 @@ import {
   PHONE_WALLPAPERS,
   PHONE_MODELS_CATALOG,
   FLIGHT_ROUTES_CATALOG,
+  BANK_VAULTS_CATALOG,
+  AIRCRAFT_CATALOG,
+  SERVER_PLAYERS,
   getDistrictsForCity,
   JobListing,
 } from '@/lib/gameState';
@@ -84,6 +89,8 @@ interface EkoPhoneProps {
     message: string,
     type?: 'info' | 'warning' | 'success' | 'alert' | 'dispatch'
   ) => void;
+  graphicsSettings?: GraphicsSettings;
+  onChangeGraphics?: (g: GraphicsSettings) => void;
 }
 
 type PhoneApp =
@@ -124,9 +131,36 @@ export const EkoPhone: React.FC<EkoPhoneProps> = ({
   onSetTimeOfDay,
   onFlyToCity,
   onAddNotification,
+  graphicsSettings,
+  onChangeGraphics,
 }) => {
   const [activeApp, setActiveApp] = useState<PhoneApp>('home');
   const [wallpaperId, setWallpaperId] = useState<string>('aurora');
+
+  // X (Twatter) splash loader + feed tabs
+  const [xLoading, setXLoading] = useState<boolean>(false);
+  const [xTab, setXTab] = useState<'foryou' | 'following' | 'trending'>('foryou');
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [openReplies, setOpenReplies] = useState<string | null>(null);
+
+  // Multi-bank & P2P Send Money
+  const [bankTab, setBankTab] = useState<'account' | 'send' | 'history' | 'vaults'>('account');
+  const [activeBankName, setActiveBankName] = useState<string>('Zenith / Fleeca');
+  const [sendRecipient, setSendRecipient] = useState<string>('');
+  const [sendAcct, setSendAcct] = useState<string>('');
+  const [sendAmount, setSendAmount] = useState<string>('');
+  const [sendNote, setSendNote] = useState<string>('');
+  const [lastReceipt, setLastReceipt] = useState<BankTransaction | null>(null);
+
+  // Flights app tab
+  const [flightTab, setFlightTab] = useState<'commercial' | 'jets'>('commercial');
+
+  useEffect(() => {
+    if (activeApp !== 'twitter') return;
+    setXLoading(true);
+    const t = setTimeout(() => setXLoading(false), 900);
+    return () => clearTimeout(t);
+  }, [activeApp]);
 
   // Calling State
   const [activeCallContact, setActiveCallContact] = useState<PhoneContact | null>(null);
@@ -1258,85 +1292,195 @@ export const EkoPhone: React.FC<EkoPhoneProps> = ({
             </div>
           )}
 
-          {/* ==================== AEROBOOK FLIGHTS APP (LOS ⇄ ABV) ==================== */}
+          {/* ==================== AEROBOOK FLIGHTS & PRIVATE JET HANGAR ==================== */}
           {activeApp === 'flights' && (
             <div className="flex flex-col flex-1 min-h-0">
-              {renderAppHeader('AeroBook — Flights LOS ⇄ ABV', 'text-sky-400')}
-              <div className="space-y-2.5 overflow-y-auto flex-1 pr-0.5">
-                <div className="p-3 rounded-2xl bg-sky-950/45 border border-sky-500/35 space-y-1">
-                  <div className="flex justify-between items-center text-[10px] font-mono text-sky-300">
-                    <span>FROM: {currentCity === 'lagos' ? 'LOS (Ikeja)' : 'ABV (Abuja)'}</span>
-                    <span>➔</span>
-                    <span>TO: {currentCity === 'lagos' ? 'ABV (Abuja FCT)' : 'LOS (Lagos)'}</span>
-                  </div>
-                  <p className="text-xs font-extrabold text-white">
-                    Book Mobile e-Ticket & Instant Takeoff
-                  </p>
-                </div>
-
-                {FLIGHT_ROUTES_CATALOG.map((fl) => (
-                  <div
-                    key={fl.id}
-                    className="p-3 rounded-2xl bg-zinc-900/90 border border-white/10 space-y-2"
-                  >
-                    <div className="flex justify-between items-start gap-2">
-                      <div>
-                        <span className="text-[9px] font-mono bg-sky-500/20 text-sky-300 px-1.5 py-0.5 rounded">
-                          {fl.cabin} • {fl.code}
-                        </span>
-                        <h4 className="text-xs font-black text-white mt-1">
-                          {fl.icon} {fl.airline}
-                        </h4>
-                      </div>
-                      <span className="font-mono text-xs font-black text-amber-300 shrink-0">
-                        {formatNaira(fl.price)}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const targetCity: CityId = currentCity === 'lagos' ? 'abuja' : 'lagos';
-                        if (player.cash >= fl.price) {
-                          onUpdatePlayer((p) => ({ ...p, cash: p.cash - fl.price }));
-                        } else if (player.bankBalance >= fl.price) {
-                          onUpdatePlayer((p) => ({ ...p, bankBalance: p.bankBalance - fl.price }));
-                        } else {
-                          onAddNotification(
-                            'Insufficient Funds',
-                            `Need ${formatNaira(fl.price)} to book ${fl.airline}.`,
-                            'warning'
-                          );
-                          return;
-                        }
-                        audioEngine.playCashEarn();
-                        onUpdateVitals((v) => ({
-                          ...v,
-                          energy: 100,
-                          stress: Math.max(0, v.stress - fl.stressRelief),
-                          streetCred: Math.min(100, v.streetCred + fl.credBonus),
-                        }));
-                        if (onFlyToCity) {
-                          onFlyToCity(targetCity, fl.airline);
-                          onClose();
-                        }
-                      }}
-                      className="w-full py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black font-black text-xs"
-                    >
-                      Book & Fly to {currentCity === 'lagos' ? 'Abuja (ABV)' : 'Lagos (LOS)'}
-                    </button>
-                  </div>
-                ))}
-
+              {renderAppHeader('AeroBook & Private Aviation', 'text-sky-400')}
+              <div className="grid grid-cols-2 gap-1 bg-zinc-900/90 p-1 rounded-xl border border-white/10 mb-2 shrink-0">
                 <button
-                  onClick={() => {
-                    onSetWaypoint('airport');
-                    onAddNotification('Airport GPS Set', 'Routing to Airport Terminal.', 'info');
-                    onClose();
-                  }}
-                  className="w-full py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sky-300 font-bold text-xs"
+                  onClick={() => setFlightTab('commercial')}
+                  className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    flightTab === 'commercial' ? 'bg-sky-500 text-black shadow-md' : 'text-zinc-400 hover:text-white'
+                  }`}
                 >
-                  📍 Set GPS Route to Airport Terminal
+                  Commercial ({currentCity === 'lagos' ? 'LOS ➔ ABV' : 'ABV ➔ LOS'})
+                </button>
+                <button
+                  onClick={() => setFlightTab('jets')}
+                  className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    flightTab === 'jets' ? 'bg-amber-400 text-black shadow-md' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  ✈️ Private Jet Hangar
                 </button>
               </div>
+
+              {flightTab === 'commercial' ? (
+                <div className="space-y-2.5 overflow-y-auto flex-1 pr-0.5">
+                  <div className="p-3 rounded-2xl bg-sky-950/45 border border-sky-500/35 space-y-1">
+                    <div className="flex justify-between items-center text-[10px] font-mono text-sky-300">
+                      <span>FROM: {currentCity === 'lagos' ? 'LOS (Ikeja MMIA)' : 'ABV (Abuja NAIA)'}</span>
+                      <span>➔</span>
+                      <span>TO: {currentCity === 'lagos' ? 'ABV (Abuja FCT)' : 'LOS (Lagos City)'}</span>
+                    </div>
+                    <p className="text-xs font-extrabold text-white">
+                      Direct Inter-City Commercial Flights
+                    </p>
+                  </div>
+
+                  {FLIGHT_ROUTES_CATALOG.map((fl) => (
+                    <div
+                      key={fl.id}
+                      className="p-3 rounded-2xl bg-zinc-900/90 border border-white/10 space-y-2"
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <span className="text-[9px] font-mono bg-sky-500/20 text-sky-300 px-1.5 py-0.5 rounded">
+                            {fl.cabin} • {fl.code}
+                          </span>
+                          <h4 className="text-xs font-black text-white mt-1">
+                            {fl.icon} {fl.airline}
+                          </h4>
+                        </div>
+                        <span className="font-mono text-xs font-black text-amber-300 shrink-0">
+                          {formatNaira(fl.price)}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const targetCity: CityId = currentCity === 'lagos' ? 'abuja' : 'lagos';
+                          if (player.cash >= fl.price) {
+                            onUpdatePlayer((p) => ({ ...p, cash: p.cash - fl.price }));
+                          } else if (player.bankBalance >= fl.price) {
+                            onUpdatePlayer((p) => ({ ...p, bankBalance: p.bankBalance - fl.price }));
+                          } else {
+                            onAddNotification(
+                              'Insufficient Funds',
+                              `Need ${formatNaira(fl.price)} to book ${fl.airline}.`,
+                              'warning'
+                            );
+                            return;
+                          }
+                          audioEngine.playCashEarn();
+                          onUpdateVitals((v) => ({
+                            ...v,
+                            energy: 100,
+                            stress: Math.max(0, v.stress - fl.stressRelief),
+                            streetCred: Math.min(100, v.streetCred + fl.credBonus),
+                          }));
+                          if (onFlyToCity) {
+                            onFlyToCity(targetCity, fl.airline);
+                            onClose();
+                          }
+                        }}
+                        className="w-full py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black font-black text-xs"
+                      >
+                        Book & Fly to {currentCity === 'lagos' ? 'Abuja (ABV)' : 'Lagos (LOS)'}
+                      </button>
+                    </div>
+                  ))}
+
+                  <button
+                    onClick={() => {
+                      onSetWaypoint('airport');
+                      onAddNotification('Airport GPS Set', 'Routing to Airport Terminal.', 'info');
+                      onClose();
+                    }}
+                    className="w-full py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sky-300 font-bold text-xs"
+                  >
+                    📍 Set GPS Route to Airport Terminal
+                  </button>
+                </div>
+              ) : (
+                /* Private Jet Hangar — Buy & Summon in 3D */
+                <div className="space-y-2.5 overflow-y-auto flex-1 pr-0.5">
+                  <div className="p-3 rounded-2xl bg-amber-950/40 border border-amber-500/35 space-y-1">
+                    <span className="text-[10px] font-mono uppercase text-amber-300 font-bold block">
+                      MMIA & NAIA EXECUTIVE JET FLEET
+                    </span>
+                    <p className="text-xs text-zinc-200 leading-snug">
+                      Own executive private jets, summon them to the runway, and fly in full 3D over Lagos & Abuja!
+                    </p>
+                  </div>
+
+                  {AIRCRAFT_CATALOG.map((jet) => {
+                    const isOwned = (player.ownedPlanes || []).includes(jet.id);
+                    return (
+                      <div
+                        key={jet.id}
+                        className="p-3 rounded-2xl bg-zinc-900/90 border border-white/10 space-y-2"
+                      >
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="min-w-0">
+                            <span className="text-[9px] font-mono bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">
+                              {jet.manufacturer} • {jet.seats} Passengers
+                            </span>
+                            <h4 className="text-xs font-black text-white mt-1 truncate">
+                              ✈️ {jet.name}
+                            </h4>
+                            <div className="text-[10px] font-mono text-zinc-400 mt-0.5">
+                              Cruise: {jet.cruiseKmh} km/h • Range: {jet.rangeKm} km
+                            </div>
+                          </div>
+                          <span className="font-mono text-xs font-black text-amber-300 shrink-0">
+                            {isOwned ? 'OWNED' : formatNaira(jet.price)}
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-zinc-300 leading-snug">{jet.description}</p>
+
+                        <button
+                          onClick={() => {
+                            if (!isOwned) {
+                              if (player.cash >= jet.price) {
+                                onUpdatePlayer((p) => ({
+                                  ...p,
+                                  cash: p.cash - jet.price,
+                                  ownedPlanes: [...(p.ownedPlanes || []), jet.id],
+                                }));
+                              } else if (player.bankBalance >= jet.price) {
+                                onUpdatePlayer((p) => ({
+                                  ...p,
+                                  bankBalance: p.bankBalance - jet.price,
+                                  ownedPlanes: [...(p.ownedPlanes || []), jet.id],
+                                }));
+                              } else {
+                                onAddNotification(
+                                  'Insufficient Funds',
+                                  `Need ${formatNaira(jet.price)} to purchase ${jet.name}.`,
+                                  'warning'
+                                );
+                                return;
+                              }
+                              audioEngine.playCashEarn();
+                              onAddNotification(
+                                'Private Jet Purchased! ✈️',
+                                `You are now the proud owner of ${jet.name}!`,
+                                'success'
+                              );
+                            }
+                            // Spawn jet on runway and close phone
+                            onSpawnVehicle(jet.id);
+                            onClose();
+                            onAddNotification(
+                              'Aircraft Cleared on Runway 🛫',
+                              `${jet.name} is prepped on the tarmac. Controls: W (Throttle), Space (Climb), C (Descend), Shift (Afterburner)!`,
+                              'info'
+                            );
+                          }}
+                          className={`w-full py-1.5 rounded-xl font-black text-xs transition-all ${
+                            isOwned
+                              ? 'bg-amber-400 hover:bg-amber-300 text-black'
+                              : 'bg-emerald-500 hover:bg-emerald-400 text-black'
+                          }`}
+                        >
+                          {isOwned ? '🛫 Summon & Fly on Runway' : `Purchase (${formatNaira(jet.price)})`}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -1466,200 +1610,713 @@ export const EkoPhone: React.FC<EkoPhoneProps> = ({
             </div>
           )}
 
-          {/* ==================== FLEECA BANK ==================== */}
+          {/* ==================== MULTI-BANK & P2P SEND MONEY ==================== */}
           {activeApp === 'bank' && (
             <div className="flex flex-col flex-1 min-h-0">
-              {renderAppHeader('Fleeca Bank & Crypto', 'text-teal-400')}
+              {renderAppHeader('Banking & Money Transfer', 'text-teal-400')}
+
+              {/* Bank selector row */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 mb-1.5 shrink-0 text-[10px] font-bold">
+                {[
+                  { name: 'Zenith / Fleeca', tier: 'Tier 1' },
+                  { name: 'GTCO Corporate', tier: 'Tier 2' },
+                  { name: 'CBN Sovereign', tier: 'Tier 3' },
+                  { name: 'OPay Instant', tier: 'Fintech' },
+                ].map((b) => (
+                  <button
+                    key={b.name}
+                    onClick={() => {
+                      audioEngine.playClick();
+                      setActiveBankName(b.name);
+                    }}
+                    className={`px-2.5 py-1 rounded-xl whitespace-nowrap border transition-all ${
+                      activeBankName === b.name
+                        ? 'bg-teal-500 text-black border-teal-400 font-black shadow-sm'
+                        : 'bg-zinc-900 text-zinc-400 border-white/5 hover:text-white'
+                    }`}
+                  >
+                    {b.name} • {b.tier}
+                  </button>
+                ))}
+              </div>
+
+              {/* Subtabs: Account | Send Money | Transactions | Vault Intel */}
+              <div className="grid grid-cols-4 gap-1 bg-zinc-900/90 p-1 rounded-xl border border-white/10 mb-2 shrink-0 text-[10px] font-bold">
+                <button
+                  onClick={() => setBankTab('account')}
+                  className={`py-1 rounded-lg transition-all ${
+                    bankTab === 'account' ? 'bg-teal-500 text-black font-black' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  Account
+                </button>
+                <button
+                  onClick={() => setBankTab('send')}
+                  className={`py-1 rounded-lg transition-all ${
+                    bankTab === 'send' ? 'bg-teal-500 text-black font-black' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  Send 💸
+                </button>
+                <button
+                  onClick={() => setBankTab('history')}
+                  className={`py-1 rounded-lg transition-all ${
+                    bankTab === 'history' ? 'bg-teal-500 text-black font-black' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  History
+                </button>
+                <button
+                  onClick={() => setBankTab('vaults')}
+                  className={`py-1 rounded-lg transition-all ${
+                    bankTab === 'vaults' ? 'bg-rose-500 text-white font-black' : 'text-rose-400 hover:text-rose-300'
+                  }`}
+                >
+                  Vaults 🔐
+                </button>
+              </div>
+
               <div className="space-y-3 overflow-y-auto flex-1 pr-0.5">
-                <div className="p-3.5 rounded-2xl bg-teal-950/50 border border-teal-500/35">
-                  <span className="text-[11px] text-teal-300">Checking Balance</span>
-                  <p className="text-2xl font-black text-white font-mono mt-0.5">
-                    {formatNaira(player.bankBalance)}
-                  </p>
-                  <p className="text-[10px] text-zinc-300 font-mono mt-1">
-                    Cash: {formatNaira(player.cash)} • QBit: {player.cryptoBalance || 15}
-                  </p>
-                </div>
-
-                <div className="p-3 rounded-2xl bg-zinc-900 border border-white/8 space-y-2.5">
-                  <span className="text-[10px] font-bold uppercase text-zinc-400 block">
-                    Quick Cash / Bank Transfer
-                  </span>
-                  <input
-                    type="number"
-                    placeholder="Amount in ₦"
-                    value={transferAmount}
-                    onChange={(e) => setTransferAmount(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-teal-500"
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={handleDeposit}
-                      className="bg-teal-500 hover:bg-teal-400 text-black font-black py-1.5 rounded-xl text-xs"
-                    >
-                      Deposit
-                    </button>
-                    <button
-                      onClick={handleWithdraw}
-                      className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-1.5 rounded-xl text-xs"
-                    >
-                      Withdraw
-                    </button>
-                  </div>
-                </div>
-
-                 <div className="p-3 rounded-2xl bg-zinc-900 border border-purple-500/30 space-y-2">
-                  <div className="flex justify-between items-center text-[11px]">
-                    <span className="font-bold text-purple-300">QBit Crypto Exchange (QBT)</span>
-                    <span className="font-mono text-emerald-400">1 QBT = ₦12,500</span>
-                  </div>
-                  <div className="flex justify-between text-xs text-zinc-300">
-                    <span>Wallet Holdings:</span>
-                    <span className="font-mono font-black text-purple-300">
-                      {player.cryptoBalance || 15} QBT (
-                      {formatNaira((player.cryptoBalance || 15) * 12500)})
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => {
-                        const cost = 5 * 12500;
-                        if (player.bankBalance < cost) {
-                          onAddNotification(
-                            'Insufficient Checking',
-                            'Need ₦62,500 in Checking to buy 5 QBT.',
-                            'warning'
-                          );
-                          return;
-                        }
-                        audioEngine.playCashEarn();
-                        onUpdatePlayer((prev) => ({
-                          ...prev,
-                          bankBalance: prev.bankBalance - cost,
-                          cryptoBalance: (prev.cryptoBalance || 15) + 5,
-                        }));
-                        onAddNotification('QBit Purchased', 'Bought +5 QBT for ₦62,500.', 'success');
-                      }}
-                      className="bg-purple-600 hover:bg-purple-500 text-white font-bold py-1.5 rounded-xl text-[11px]"
-                    >
-                      Buy 5 QBT (₦62.5k)
-                    </button>
-                    <button
-                      onClick={() => {
-                        const curr = player.cryptoBalance || 15;
-                        if (curr < 5) {
-                          onAddNotification(
-                            'Low QBit Balance',
-                            'Need at least 5 QBT to sell.',
-                            'warning'
-                          );
-                          return;
-                        }
-                        const payout = 5 * 12500;
-                        audioEngine.playCashEarn();
-                        onUpdatePlayer((prev) => ({
-                          ...prev,
-                          bankBalance: prev.bankBalance + payout,
-                          cryptoBalance: (prev.cryptoBalance || 15) - 5,
-                        }));
-                        onAddNotification(
-                          'QBit Liquidated',
-                          'Sold 5 QBT — +₦62,500 wired to Checking!',
-                          'success'
-                        );
-                      }}
-                      className="bg-zinc-800 hover:bg-emerald-600 text-zinc-100 font-bold py-1.5 rounded-xl text-[11px] transition-colors"
-                    >
-                      Sell 5 QBT (+₦62.5k)
-                    </button>
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-2xl bg-zinc-900 border border-amber-500/25 space-y-2">
-                  <div className="flex justify-between text-[11px]">
-                    <span className="font-bold text-amber-400">Micro-Credit Line</span>
-                    <span className="text-zinc-400">15% APR</span>
-                  </div>
-                  {player.loanBalance > 0 ? (
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-zinc-400">Balance Due:</span>
-                        <span className="font-mono font-bold text-rose-400">
-                          {formatNaira(player.loanBalance)}
+                {bankTab === 'account' && (
+                  <>
+                    <div className="p-3.5 rounded-2xl bg-teal-950/50 border border-teal-500/35">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="text-[10px] uppercase font-mono tracking-wider text-teal-300">
+                            {activeBankName}
+                          </span>
+                          <p className="text-2xl font-black text-white font-mono mt-0.5">
+                            {formatNaira(player.bankBalance)}
+                          </p>
+                        </div>
+                        <span className="text-[9px] font-mono bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded border border-teal-400/30">
+                          NUBAN: 0184920482
                         </span>
                       </div>
-                      <button
-                        onClick={handleRepayLoan}
-                        className="w-full bg-amber-500 hover:bg-amber-400 text-black font-bold py-1.5 rounded-xl text-xs"
-                      >
-                        Repay from Pocket Cash
-                      </button>
+                      <p className="text-[10px] text-zinc-300 font-mono mt-2">
+                        Pocket Cash: <strong className="text-amber-300">{formatNaira(player.cash)}</strong> • QBit: <strong className="text-purple-300">{player.cryptoBalance || 15} QBT</strong>
+                      </p>
                     </div>
-                  ) : (
-                    <div className="space-y-2">
+
+                    <div className="p-3 rounded-2xl bg-zinc-900 border border-white/8 space-y-2.5">
+                      <span className="text-[10px] font-bold uppercase text-zinc-400 block">
+                        Quick Cash Deposit / Withdraw
+                      </span>
                       <input
                         type="number"
-                        placeholder="Max ₦250,000"
-                        value={loanInput}
-                        onChange={(e) => setLoanInput(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none"
+                        placeholder="Amount in ₦"
+                        value={transferAmount}
+                        onChange={(e) => setTransferAmount(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-teal-500"
                       />
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={handleDeposit}
+                          className="bg-teal-500 hover:bg-teal-400 text-black font-black py-1.5 rounded-xl text-xs"
+                        >
+                          Deposit Cash
+                        </button>
+                        <button
+                          onClick={handleWithdraw}
+                          className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-1.5 rounded-xl text-xs"
+                        >
+                          Withdraw Cash
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-2xl bg-zinc-900 border border-purple-500/30 space-y-2">
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span className="font-bold text-purple-300">QBit Crypto Exchange (QBT)</span>
+                        <span className="font-mono text-emerald-400">1 QBT = ₦12,500</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-zinc-300">
+                        <span>Holdings:</span>
+                        <span className="font-mono font-black text-purple-300">
+                          {player.cryptoBalance || 15} QBT ({formatNaira((player.cryptoBalance || 15) * 12500)})
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => {
+                            const cost = 5 * 12500;
+                            if (player.bankBalance < cost) {
+                              onAddNotification('Insufficient Checking', 'Need ₦62,500 in Checking to buy 5 QBT.', 'warning');
+                              return;
+                            }
+                            audioEngine.playCashEarn();
+                            onUpdatePlayer((prev) => ({
+                              ...prev,
+                              bankBalance: prev.bankBalance - cost,
+                              cryptoBalance: (prev.cryptoBalance || 15) + 5,
+                            }));
+                            onAddNotification('QBit Purchased', 'Bought +5 QBT for ₦62,500.', 'success');
+                          }}
+                          className="bg-purple-600 hover:bg-purple-500 text-white font-bold py-1.5 rounded-xl text-[11px]"
+                        >
+                          Buy 5 QBT (₦62.5k)
+                        </button>
+                        <button
+                          onClick={() => {
+                            const curr = player.cryptoBalance || 15;
+                            if (curr < 5) {
+                              onAddNotification('Low QBit Balance', 'Need at least 5 QBT to sell.', 'warning');
+                              return;
+                            }
+                            const payout = 5 * 12500;
+                            audioEngine.playCashEarn();
+                            onUpdatePlayer((prev) => ({
+                              ...prev,
+                              bankBalance: prev.bankBalance + payout,
+                              cryptoBalance: (prev.cryptoBalance || 15) - 5,
+                            }));
+                            onAddNotification('QBit Liquidated', 'Sold 5 QBT — +₦62,500 wired to Checking!', 'success');
+                          }}
+                          className="bg-zinc-800 hover:bg-emerald-600 text-zinc-100 font-bold py-1.5 rounded-xl text-[11px] transition-colors"
+                        >
+                          Sell 5 QBT (+₦62.5k)
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Send Money (P2P Transfer) */}
+                {bankTab === 'send' && (
+                  <div className="space-y-2.5">
+                    <div className="p-3 rounded-2xl bg-zinc-900/90 border border-teal-500/35 space-y-2">
+                      <span className="text-[10px] font-bold uppercase text-teal-300 block">
+                        P2P Real-Time NIP Instant Transfer
+                      </span>
+
+                      {/* Quick Recipient Chips */}
+                      <div className="text-[9px] text-zinc-400 font-mono">Quick Recipients:</div>
+                      <div className="flex flex-wrap gap-1">
+                        {[
+                          { name: 'Bisi (Lekki Babe)', acct: '0239103921', defAmt: '30000', note: 'Hair & Quilox VIP' },
+                          { name: 'Mama (Ibadan)', acct: '1092830192', defAmt: '15000', note: 'Food & Upkeep' },
+                          { name: 'Emeka (Fixer)', acct: '0039281920', defAmt: '50000', note: 'Vault Jammer Chip' },
+                          { name: 'Tunde (PDM Motors)', acct: '9928192019', defAmt: '100000', note: 'Vehicle Down Payment' },
+                        ].map((c) => (
+                          <button
+                            key={c.name}
+                            onClick={() => {
+                              setSendRecipient(c.name);
+                              setSendAcct(c.acct);
+                              setSendAmount(c.defAmt);
+                              setSendNote(c.note);
+                            }}
+                            className="px-2 py-0.5 rounded-lg bg-zinc-800 hover:bg-teal-950/60 border border-white/10 text-[9px] text-zinc-200"
+                          >
+                            + {c.name}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Recipient Input */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-zinc-400">Beneficiary / Citizen Name</label>
+                        <input
+                          type="text"
+                          placeholder="Recipient Name (e.g. Bisi, Emeka, Officer)"
+                          value={sendRecipient}
+                          onChange={(e) => setSendRecipient(e.target.value)}
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-teal-500"
+                        />
+                      </div>
+
+                      {/* Account Number */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-zinc-400">10-Digit NUBAN Account</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="0123456789"
+                            maxLength={10}
+                            value={sendAcct}
+                            onChange={(e) => setSendAcct(e.target.value)}
+                            className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-teal-500"
+                          />
+                          {sendAcct.length >= 8 && (
+                            <span className="absolute right-2.5 top-1.5 text-[9px] font-mono text-emerald-400 font-bold">
+                              ✓ NIP VERIFIED
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Transfer Amount */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-zinc-400">Transfer Amount (₦)</label>
+                        <input
+                          type="number"
+                          placeholder="Amount in ₦"
+                          value={sendAmount}
+                          onChange={(e) => setSendAmount(e.target.value)}
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-teal-500"
+                        />
+                        <div className="flex gap-1 pt-1">
+                          {['10000', '30000', '100000', '500000'].map((amt) => (
+                            <button
+                              key={amt}
+                              onClick={() => setSendAmount(amt)}
+                              className="px-2 py-0.5 rounded bg-zinc-800 text-[9px] font-mono text-zinc-300 hover:text-white"
+                            >
+                              +{formatNaira(parseInt(amt))}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Transfer Note */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-zinc-400">Narration / Note</label>
+                        <input
+                          type="text"
+                          placeholder="What's this for?"
+                          value={sendNote}
+                          onChange={(e) => setSendNote(e.target.value)}
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none"
+                        />
+                      </div>
+
                       <button
-                        onClick={handleTakeLoan}
-                        className="w-full bg-amber-500 hover:bg-amber-400 text-black font-bold py-1.5 rounded-xl text-xs"
+                        onClick={() => {
+                          const val = parseInt(sendAmount);
+                          if (!val || val <= 0) {
+                            onAddNotification('Invalid Amount', 'Enter a valid transfer amount.', 'warning');
+                            return;
+                          }
+                          if (player.bankBalance < val) {
+                            onAddNotification('Insufficient Funds', `You need ${formatNaira(val)} in your bank account.`, 'warning');
+                            return;
+                          }
+                          const beneficiary = sendRecipient.trim() || 'Citizen';
+                          const tx: BankTransaction = {
+                            id: 'tx-' + Date.now(),
+                            type: 'sent',
+                            counterparty: beneficiary,
+                            bankName: activeBankName,
+                            amount: val,
+                            note: sendNote || 'P2P Wire Transfer',
+                            timestamp: formatGameClock(timeOfDay),
+                            sessionId: 'NIP-' + Math.floor(10000000 + Math.random() * 90000000),
+                          };
+
+                          audioEngine.playCashEarn();
+                          onUpdatePlayer((p) => ({
+                            ...p,
+                            bankBalance: p.bankBalance - val,
+                            transactions: [tx, ...(p.transactions || [])],
+                          }));
+                          setLastReceipt(tx);
+                          onAddNotification(
+                            'Transfer Successful! 💸',
+                            `Sent ${formatNaira(val)} to ${beneficiary} via ${activeBankName}.`,
+                            'success'
+                          );
+
+                          // Trigger RP dynamic reactions if sending to contacts!
+                          if (beneficiary.toLowerCase().includes('babe')) {
+                            onUpdateVitals((v) => ({ ...v, streetCred: Math.min(100, v.streetCred + 3), stress: Math.max(0, v.stress - 15) }));
+                            setTimeout(() => {
+                              onAddNotification('Babe 💬', 'Thank you babyyy! See you at Quilox 💕✨', 'info');
+                            }, 1200);
+                          } else if (beneficiary.toLowerCase().includes('mama')) {
+                            onUpdateVitals((v) => ({ ...v, stress: Math.max(0, v.stress - 25) }));
+                            setTimeout(() => {
+                              onAddNotification('Mama 💬', 'God bless you my pikin! Your pocket will never run dry!', 'info');
+                            }, 1200);
+                          }
+                        }}
+                        className="w-full py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-black font-black text-xs transition-all shadow-md mt-1"
                       >
-                        Request Instant Loan
+                        ⚡ Authorize Instant Wire ({formatNaira(parseInt(sendAmount) || 0)})
                       </button>
                     </div>
-                  )}
-                </div>
+
+                    {/* Receipt Modal Card */}
+                    {lastReceipt && (
+                      <div className="p-3 rounded-2xl bg-black/60 border border-emerald-400/40 space-y-1.5 text-xs font-mono">
+                        <div className="flex justify-between items-center text-emerald-400 font-black">
+                          <span>✓ TRANSACTION RECEIPT</span>
+                          <span className="text-[10px] text-zinc-400">{lastReceipt.timestamp}</span>
+                        </div>
+                        <div className="flex justify-between text-white font-black text-sm">
+                          <span>{formatNaira(lastReceipt.amount)}</span>
+                          <span className="text-[10px] text-zinc-400">{lastReceipt.sessionId}</span>
+                        </div>
+                        <div className="text-[10px] text-zinc-300">
+                          To: <strong className="text-white">{lastReceipt.counterparty}</strong> ({activeBankName})
+                        </div>
+                        <div className="text-[10px] text-zinc-400 italic">
+                          &ldquo;{lastReceipt.note}&rdquo;
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Transaction History Tab */}
+                {bankTab === 'history' && (
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold uppercase text-zinc-400 block">
+                      Statement & Audit Log
+                    </span>
+                    {(player.transactions || []).length === 0 ? (
+                      <div className="p-4 rounded-2xl bg-zinc-900 border border-white/5 text-center text-xs text-zinc-400">
+                        No previous transfers. Use the Send tab to transfer money to someone!
+                      </div>
+                    ) : (
+                      (player.transactions || []).map((t) => (
+                        <div
+                          key={t.id}
+                          className="p-2.5 rounded-2xl bg-zinc-900/90 border border-white/5 flex items-center justify-between text-xs font-mono"
+                        >
+                          <div>
+                            <div className="font-bold text-white">{t.counterparty}</div>
+                            <div className="text-[10px] text-zinc-400">
+                              {t.bankName} • {t.note}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className={`font-black ${t.type === 'received' ? 'text-emerald-400' : 'text-amber-300'}`}>
+                              {t.type === 'received' ? '+' : '-'}{formatNaira(t.amount)}
+                            </div>
+                            <div className="text-[9px] text-zinc-500">{t.timestamp}</div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {/* Vault Heist Intel Tab */}
+                {bankTab === 'vaults' && (
+                  <div className="space-y-2.5">
+                    <div className="p-2.5 rounded-2xl bg-rose-950/40 border border-rose-500/40 text-[11px] text-rose-200">
+                      <strong>🚨 Bank Vault Infiltration Intel:</strong> Multiple banks throughout Lagos & Abuja house armored cash reserves. Disable security cameras or hack the vault matrix to breach!
+                    </div>
+
+                    {BANK_VAULTS_CATALOG.map((v) => (
+                      <div
+                        key={v.id}
+                        className="p-3 rounded-2xl bg-zinc-900/90 border border-white/10 space-y-2"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span
+                              className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded"
+                              style={{ backgroundColor: v.color + '26', color: v.color }}
+                            >
+                              TIER {v.tier} • {v.securityLevel}
+                            </span>
+                            <h4 className="text-xs font-black text-white mt-1">{v.name}</h4>
+                          </div>
+                          <span className="font-mono text-xs font-black text-emerald-400">
+                            {formatNaira(v.minLoot)}–{formatNaira(v.maxLoot)}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-zinc-300 leading-snug">{v.description}</p>
+                        <div className="grid grid-cols-2 gap-1.5 text-[9px] font-mono text-zinc-400">
+                          <div>CCTV Cameras: <strong className="text-white">{v.camerasCount} Active</strong></div>
+                          <div>Armed Guards: <strong className="text-white">{v.guardsCount} Guards</strong></div>
+                          <div>Alarm Rating: <strong className="text-amber-300">{v.wantedStarsOnAlarm}★ Police</strong></div>
+                          <div>Required Tool: <strong className="text-sky-300">{v.requiredTool}</strong></div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            onSetWaypoint(v.id as LagosDistrict);
+                            onAddNotification('GPS Route Set', `Pin set to ${v.name}.`, 'info');
+                            onClose();
+                          }}
+                          className="w-full py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-teal-300 font-bold text-xs"
+                        >
+                          📍 Set GPS Pin to Bank
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* ==================== TWATTER ==================== */}
+          {/* ==================== 𝕏 (TWITTER) WITH LOADING SCREEN & REBUILT FEED ==================== */}
           {activeApp === 'twitter' && (
-            <div className="flex flex-col flex-1 min-h-0">
-              {renderAppHeader('Twatter', 'text-sky-400')}
-              <div className="space-y-2.5 overflow-y-auto flex-1 pr-0.5">
-                <div className="p-2.5 rounded-2xl bg-zinc-900 border border-white/8 space-y-2">
-                  <textarea
-                    rows={2}
-                    placeholder="What’s happening in the city?"
-                    value={newTweetText}
-                    onChange={(e) => setNewTweetText(e.target.value)}
-                    className="w-full bg-transparent text-xs text-white placeholder-zinc-500 resize-none focus:outline-none"
-                  />
-                  <div className="flex justify-end">
+            <div className="flex flex-col flex-1 min-h-0 bg-black text-white -mx-3.5 -my-1 px-3.5 py-1">
+              {xLoading ? (
+                /* Authentic Minimalist Pitch-Black 𝕏 Loading Screen (~900ms) */
+                <div className="flex-1 flex flex-col items-center justify-center space-y-4 animate-fade-in bg-black">
+                  <div className="text-5xl font-black text-white tracking-tighter select-none animate-pulse">
+                    𝕏
+                  </div>
+                  <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                  <span className="text-[10px] font-mono text-zinc-500 tracking-wider">
+                    Connecting to 𝕏 City Network...
+                  </span>
+                </div>
+              ) : (
+                <div className="flex flex-col flex-1 min-h-0">
+                  {/* Top Bar with 𝕏 Header & Navigation Tabs */}
+                  <div className="flex items-center justify-between pb-2 border-b border-zinc-800 shrink-0 pt-1">
                     <button
-                      onClick={handlePostTweet}
-                      className="bg-sky-500 hover:bg-sky-400 text-white font-bold px-3 py-1 rounded-full text-[11px] flex items-center gap-1"
+                      onClick={() => setActiveApp('home')}
+                      className="flex items-center gap-0.5 text-xs font-semibold text-zinc-400 hover:text-white"
                     >
-                      <Send size={11} /> Post
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span className="text-lg font-black text-white">𝕏</span>
+                    <button
+                      onClick={() => {
+                        const newPostText = prompt('Compose new 𝕏 post:');
+                        if (newPostText && newPostText.trim()) {
+                          const tweet: TweetItem = {
+                            id: 't-' + Date.now(),
+                            author: player.name,
+                            handle: '@' + player.name.toLowerCase().replace(/\s+/g, '_'),
+                            avatarColor: player.outfit.color || '#3b82f6',
+                            verified: true,
+                            badgeType: 'blue',
+                            content: newPostText.trim(),
+                            likes: 1,
+                            retweets: 0,
+                            replies: 0,
+                            views: '1',
+                            liked: true,
+                            timeAgo: 'Just now',
+                          };
+                          setTweets([tweet, ...tweets]);
+                          audioEngine.playCashEarn();
+                          onAddNotification('Post Published 𝕏', 'Your post is now live across the city!', 'success');
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-full bg-white text-black font-bold text-[10px] hover:bg-zinc-200"
+                    >
+                      Post
                     </button>
                   </div>
-                </div>
 
-                {tweets.map((tweet) => (
-                  <div
-                    key={tweet.id}
-                    className="p-2.5 rounded-2xl bg-zinc-900/85 border border-white/8 space-y-1"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs text-white">
-                        {tweet.author}{' '}
-                        {tweet.verified && <span className="text-sky-400">✓</span>}
-                      </span>
-                      <span className="text-[10px] text-zinc-500">{tweet.timeAgo}</span>
+                  {/* Feed Tabs: For you | Following | Trending */}
+                  <div className="grid grid-cols-3 border-b border-zinc-800 text-xs font-bold text-center shrink-0">
+                    {(['foryou', 'following', 'trending'] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setXTab(tab)}
+                        className={`py-2 relative transition-colors ${
+                          xTab === tab ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                        }`}
+                      >
+                        {tab === 'foryou' ? 'For You' : tab === 'following' ? 'Following' : 'Trending 🔥'}
+                        {xTab === tab && (
+                          <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-sky-500 rounded-full" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Compose Tweet Box */}
+                  <div className="p-2.5 border-b border-zinc-800 flex gap-2.5 shrink-0 bg-black">
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 border border-white/20"
+                      style={{ backgroundColor: player.outfit.color || '#3b82f6' }}
+                    >
+                      {player.name[0]}
                     </div>
-                    <p className="text-xs text-zinc-200 leading-relaxed">{tweet.content}</p>
-                    <div className="flex gap-4 text-[10px] text-zinc-400 pt-0.5">
-                      <span>❤️ {tweet.likes}</span>
-                      <span>🔄 {tweet.retweets}</span>
+                    <div className="flex-1 space-y-1.5">
+                      <textarea
+                        rows={2}
+                        placeholder="What is happening in Lagos / Abuja?!"
+                        value={newTweetText}
+                        onChange={(e) => setNewTweetText(e.target.value)}
+                        className="w-full bg-transparent text-xs text-white placeholder-zinc-500 resize-none focus:outline-none"
+                      />
+                      <div className="flex justify-between items-center pt-1 border-t border-zinc-900">
+                        <div className="flex gap-2 text-sky-400 text-xs">
+                          <span>📷</span>
+                          <span>📊</span>
+                          <span>📍</span>
+                        </div>
+                        <button
+                          onClick={handlePostTweet}
+                          className="bg-white hover:bg-zinc-200 text-black font-bold px-3 py-1 rounded-full text-[10px]"
+                        >
+                          Post
+                        </button>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
+
+                  {/* Feed Stream */}
+                  <div className="space-y-0 divide-y divide-zinc-800 overflow-y-auto flex-1 pr-0.5">
+                    {tweets.map((tweet) => {
+                      const isLiked = tweet.liked;
+                      const isRetweeted = tweet.retweeted;
+                      return (
+                        <div key={tweet.id} className="p-3 space-y-2 hover:bg-zinc-950/60 transition-colors">
+                          <div className="flex items-start gap-2.5">
+                            <div
+                              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 border border-white/10"
+                              style={{ backgroundColor: tweet.avatarColor }}
+                            >
+                              {tweet.author[0]}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1">
+                                <span className="font-bold text-xs text-white truncate">{tweet.author}</span>
+                                {tweet.verified && (
+                                  <span className={`text-[10px] ${tweet.badgeType === 'gold' ? 'text-amber-400' : 'text-sky-400'}`}>
+                                    ✓
+                                  </span>
+                                )}
+                                <span className="text-[10px] text-zinc-500 truncate">{tweet.handle}</span>
+                                <span className="text-[10px] text-zinc-600">·</span>
+                                <span className="text-[10px] text-zinc-500 shrink-0">{tweet.timeAgo}</span>
+                              </div>
+
+                              <p className="text-xs text-zinc-100 leading-relaxed mt-1 break-words">
+                                {tweet.content}
+                              </p>
+
+                              {tweet.mediaGradient && (
+                                <div
+                                  className="w-full h-24 rounded-xl mt-2 border border-white/10 flex items-center justify-center text-xs font-mono text-white/90"
+                                  style={{ background: tweet.mediaGradient }}
+                                >
+                                  {tweet.mediaCaption || '📸 Attached In-Game Shot'}
+                                </div>
+                              )}
+
+                              {/* Interactive Actions: Reply, Repost, Like, Views */}
+                              <div className="flex items-center justify-between text-zinc-500 text-[11px] mt-2.5 max-w-[260px]">
+                                <button
+                                  onClick={() => setOpenReplies((id) => (id === tweet.id ? null : tweet.id))}
+                                  className="flex items-center gap-1 hover:text-sky-400 transition-colors"
+                                >
+                                  <span>💬</span>
+                                  <span>{tweet.replies || 3}</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    audioEngine.playClick();
+                                    setTweets((list) =>
+                                      list.map((t) =>
+                                        t.id === tweet.id
+                                          ? {
+                                              ...t,
+                                              retweeted: !t.retweeted,
+                                              retweets: t.retweeted ? t.retweets - 1 : t.retweets + 1,
+                                            }
+                                          : t
+                                      )
+                                    );
+                                  }}
+                                  className={`flex items-center gap-1 transition-colors ${
+                                    isRetweeted ? 'text-emerald-400' : 'hover:text-emerald-400'
+                                  }`}
+                                >
+                                  <span>🔁</span>
+                                  <span>{tweet.retweets}</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    audioEngine.playClick();
+                                    setTweets((list) =>
+                                      list.map((t) =>
+                                        t.id === tweet.id
+                                          ? {
+                                              ...t,
+                                              liked: !t.liked,
+                                              likes: t.liked ? t.likes - 1 : t.likes + 1,
+                                            }
+                                          : t
+                                      )
+                                    );
+                                  }}
+                                  className={`flex items-center gap-1 transition-colors ${
+                                    isLiked ? 'text-rose-500 font-bold' : 'hover:text-rose-500'
+                                  }`}
+                                >
+                                  <span>{isLiked ? '❤️' : '🤍'}</span>
+                                  <span>{tweet.likes}</span>
+                                </button>
+
+                                <span className="flex items-center gap-1 text-[10px] text-zinc-600">
+                                  <span>👁️</span>
+                                  <span>{tweet.views || '18.4K'}</span>
+                                </span>
+                              </div>
+
+                              {/* Inline Replies drawer */}
+                              {openReplies === tweet.id && (
+                                <div className="mt-2.5 pt-2 border-t border-zinc-800 space-y-2">
+                                  {(tweet.comments || [
+                                    { id: 'c1', author: 'Chidi', handle: '@chidi_tech', text: 'Real talk! 💯', timeAgo: '2m' },
+                                    { id: 'c2', author: 'Bisi', handle: '@bisi_vibes', text: 'Where we heading tonight? 🥂', timeAgo: '1m' },
+                                  ]).map((com) => (
+                                    <div key={com.id} className="text-[10px] bg-zinc-900/60 p-2 rounded-xl">
+                                      <div className="flex justify-between text-zinc-400">
+                                        <span className="font-bold text-white">{com.author}</span>
+                                        <span>{com.timeAgo}</span>
+                                      </div>
+                                      <p className="text-zinc-200 mt-0.5">{com.text}</p>
+                                    </div>
+                                  ))}
+
+                                  <div className="flex gap-1.5 pt-1">
+                                    <input
+                                      type="text"
+                                      placeholder="Reply to this thread..."
+                                      value={replyDrafts[tweet.id] || ''}
+                                      onChange={(e) =>
+                                        setReplyDrafts({ ...replyDrafts, [tweet.id]: e.target.value })
+                                      }
+                                      className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-2.5 py-1 text-xs text-white focus:outline-none"
+                                    />
+                                    <button
+                                      onClick={() => {
+                                        const draft = replyDrafts[tweet.id]?.trim();
+                                        if (!draft) return;
+                                        setTweets((list) =>
+                                          list.map((t) =>
+                                            t.id === tweet.id
+                                              ? {
+                                                  ...t,
+                                                  replies: (t.replies || 0) + 1,
+                                                  comments: [
+                                                    ...(t.comments || []),
+                                                    {
+                                                      id: 'c-' + Date.now(),
+                                                      author: player.name,
+                                                      handle: '@' + player.name.toLowerCase().replace(/\s+/g, '_'),
+                                                      text: draft,
+                                                      timeAgo: 'Just now',
+                                                    },
+                                                  ],
+                                                }
+                                              : t
+                                          )
+                                        );
+                                        setReplyDrafts({ ...replyDrafts, [tweet.id]: '' });
+                                        audioEngine.playClick();
+                                      }}
+                                      className="px-2.5 py-1 bg-sky-500 rounded-xl text-black font-bold text-xs"
+                                    >
+                                      Reply
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1836,6 +2493,94 @@ export const EkoPhone: React.FC<EkoPhoneProps> = ({
                     })}
                   </div>
                 </div>
+
+                {/* Game Resolution & Graphics Engine Settings */}
+                {graphicsSettings && onChangeGraphics && (
+                  <div className="p-3 rounded-2xl bg-zinc-900 border border-teal-500/35 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase text-teal-300 block">
+                        ⚙️ Display Resolution &amp; 3D Graphics
+                      </span>
+                      <span className="text-[10px] font-mono text-white bg-black/60 px-2 py-0.5 rounded border border-white/10 font-bold">
+                        {Math.round(graphicsSettings.resolutionScale * 100)}% Res
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] text-zinc-400">
+                        <span>Resolution Scaling</span>
+                        <span>{graphicsSettings.resolutionScale >= 1.25 ? 'Supersample' : graphicsSettings.resolutionScale <= 0.75 ? 'Performance' : 'Native 1080p/4K'}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0.5}
+                        max={1.5}
+                        step={0.05}
+                        value={graphicsSettings.resolutionScale}
+                        onChange={(e) =>
+                          onChangeGraphics({
+                            ...graphicsSettings,
+                            resolutionScale: parseFloat(e.target.value),
+                          })
+                        }
+                        className="w-full accent-teal-400 cursor-pointer"
+                      />
+                      <div className="grid grid-cols-5 gap-1 pt-0.5">
+                        {[0.5, 0.75, 1.0, 1.25, 1.5].map((scale) => (
+                          <button
+                            key={scale}
+                            onClick={() =>
+                              onChangeGraphics({ ...graphicsSettings, resolutionScale: scale })
+                            }
+                            className={`py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                              graphicsSettings.resolutionScale === scale
+                                ? 'bg-teal-500 text-black shadow-sm'
+                                : 'bg-zinc-950 text-zinc-400 hover:text-white border border-white/5'
+                            }`}
+                          >
+                            {Math.round(scale * 100)}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5 pt-1">
+                      <button
+                        onClick={() =>
+                          onChangeGraphics({
+                            ...graphicsSettings,
+                            bloomEnabled: !graphicsSettings.bloomEnabled,
+                          })
+                        }
+                        className={`p-2 rounded-xl border text-[10px] font-bold flex justify-between items-center ${
+                          graphicsSettings.bloomEnabled
+                            ? 'bg-teal-500/20 border-teal-400 text-teal-200'
+                            : 'bg-zinc-950 border-white/10 text-zinc-400'
+                        }`}
+                      >
+                        <span>HDR Bloom</span>
+                        <span className="font-mono text-[9px]">{graphicsSettings.bloomEnabled ? 'ON' : 'OFF'}</span>
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          onChangeGraphics({
+                            ...graphicsSettings,
+                            shadowsEnabled: !graphicsSettings.shadowsEnabled,
+                          })
+                        }
+                        className={`p-2 rounded-xl border text-[10px] font-bold flex justify-between items-center ${
+                          graphicsSettings.shadowsEnabled
+                            ? 'bg-teal-500/20 border-teal-400 text-teal-200'
+                            : 'bg-zinc-950 border-white/10 text-zinc-400'
+                        }`}
+                      >
+                        <span>Soft Shadows</span>
+                        <span className="font-mono text-[9px]">{graphicsSettings.shadowsEnabled ? 'ON' : 'OFF'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="p-3 rounded-2xl bg-zinc-900 border border-white/8 space-y-2">
                   <span className="text-[10px] font-bold uppercase text-zinc-400 block">

@@ -1662,11 +1662,11 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
           hat: 'cap',
         });
         aiRider.root.position.set(0, 0.14, -0.22);
-        aiRider.torso.rotation.x = 0.28;
-        aiRider.armL.rotation.x = -0.95;
-        aiRider.armR.rotation.x = -0.95;
-        aiRider.legL.rotation.x = -0.7;
-        aiRider.legR.rotation.x = -0.7;
+        aiRider.spine.rotation.x = 0.28;
+        aiRider.lShoulder.rotation.x = -0.95;
+        aiRider.rShoulder.rotation.x = -0.95;
+        aiRider.lHip.rotation.x = -0.7;
+        aiRider.rHip.rotation.x = -0.7;
         model.group.add(aiRider.root);
       }
       outdoorGroup.add(model.group);
@@ -2094,9 +2094,16 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
         const rz = nearestRoad(pState.z);
         const useX = Math.abs(rx - pState.x) < Math.abs(rz - pState.z);
         if (car.category === 'plane') {
-          car.x = useX ? rx : pState.x;
-          car.z = useX ? pState.z : rz;
-          car.heading = useX ? 0 : Math.PI / 2;
+          // Place directly on the Dedicated Airport Runway 18L/36R if near Airport, or wide avenue
+          if (pState.x < -88) {
+            car.x = -212;
+            car.z = -58;
+            car.heading = 0;
+          } else {
+            car.x = useX ? rx : pState.x;
+            car.z = useX ? pState.z : rz;
+            car.heading = useX ? 0 : Math.PI / 2;
+          }
           car.y = groundY(car.x, car.z);
           car.vy = 0;
           car.pitch = 0;
@@ -2371,7 +2378,7 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
             car.vz *= -0.25;
             audioEngine.playCrash(0.45);
           } else {
-            car.x = Math.max(-WORLD_HALF - 85, Math.min(WORLD_HALF + 85, nx));
+            car.x = Math.max(-275, Math.min(WORLD_HALF + 85, nx));
             car.z = Math.max(-WORLD_HALF - 85, Math.min(WORLD_HALF + 85, nz));
           }
 
@@ -2546,12 +2553,12 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
             player.root.position.set(car.x - nf.x * 0.22, gy + 0.14, car.z - nf.z * 0.22);
             player.root.rotation.set(0, car.heading, car.roll, 'YXZ');
             player.hips.position.y = 0.68;
-            player.torso.rotation.set(0.34, 0, 0);
+            player.spine.rotation.set(0.34, 0, 0);
             player.head.rotation.set(-0.22, -car.steer * 0.4, 0);
-            player.armL.rotation.set(-0.98, 0, 0.14);
-            player.armR.rotation.set(-0.98, 0, -0.14);
-            player.legL.rotation.set(-0.72, 0, 0.18);
-            player.legR.rotation.set(-0.72, 0, -0.18);
+            player.lShoulder.rotation.set(-0.98, 0, 0.14);
+            player.rShoulder.rotation.set(-0.98, 0, -0.14);
+            player.lHip.rotation.set(-0.72, 0, 0.18);
+            player.rHip.rotation.set(-0.72, 0, -0.18);
             player.phone.visible = false;
           }
 

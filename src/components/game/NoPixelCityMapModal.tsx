@@ -35,6 +35,9 @@ const ENTERABLE_DISTRICTS: LagosDistrict[] = [
   'gas',
   'mrpd',
   'yaba',
+  'cbn',
+  'gtbank',
+  'istore',
 ];
 
 export const NoPixelCityMapModal: React.FC<NoPixelCityMapModalProps> = ({
@@ -91,6 +94,36 @@ export const NoPixelCityMapModal: React.FC<NoPixelCityMapModalProps> = ({
     ctx.strokeStyle = viewCity === 'abuja' ? '#34d39955' : '#38bdf855';
     ctx.lineWidth = 2;
     ctx.strokeRect(lx0, ly0, lx1 - lx0, ly1 - ly0);
+
+    // 2a. Dedicated Airport Peninsula Landmass (West of City: x = -88 down to -145, z = -45 to +65)
+    // Completely separated from city streets with its own causeway road!
+    const [ap0x, ap0y] = toCanvas(-145, 65);
+    const [ap1x, ap1y] = toCanvas(-88, -45);
+    ctx.fillStyle = viewCity === 'abuja' ? '#142019' : '#0b1329';
+    ctx.fillRect(ap0x, ap0y, ap1x - ap0x, ap1y - ap0y);
+    ctx.strokeStyle = '#38bdf888';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(ap0x, ap0y, ap1x - ap0x, ap1y - ap0y);
+    // Runway strip on Peninsula
+    const [rw0x, rw0y] = toCanvas(-138, 55);
+    const [rw1x, rw1y] = toCanvas(-138, -35);
+    ctx.strokeStyle = '#f8fafc';
+    ctx.lineWidth = 3.5;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(rw0x, rw0y);
+    ctx.lineTo(rw1x, rw1y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Causeway Road bridge connecting City to Airport
+    const [cw0x, cw0y] = toCanvas(-94, 44);
+    const [cw1x, cw1y] = toCanvas(-82, 36);
+    ctx.fillStyle = '#334155';
+    ctx.fillRect(cw0x, cw0y, cw1x - cw0x, cw1y - cw0y);
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 8px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('MMIA INTL RUNWAY 18L/36R', (rw0x + rw1x) / 2 - 8, (rw0y + rw1y) / 2);
 
     // 2b. Google Maps Geographic Landmarks & Natural Landscapes
     if (viewCity === 'lagos') {

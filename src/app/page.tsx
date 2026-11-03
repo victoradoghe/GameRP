@@ -36,6 +36,8 @@ import {
   ActiveMission,
   JobKind,
   ChatLine,
+  GraphicsSettings,
+  BankVaultSpec,
 } from '@/lib/types';
 import {
   INITIAL_LAPO_PLAYER,
@@ -49,7 +51,9 @@ import {
   SERVER_PLAYERS,
   OOC_CHATTER,
   SPAWN_POINTS,
+  BANK_VAULTS_CATALOG,
 } from '@/lib/gameState';
+import { RadialWheelModal } from '@/components/game/RadialWheelModal';
 import { generateAddresses } from '@/lib/cityLayout';
 import { audioEngine } from '@/lib/audioEngine';
 
@@ -195,6 +199,21 @@ export default function LagosLifeGamePage() {
   const [activeBuildingId, setActiveBuildingId] = useState<LagosDistrict | null>(null);
   const [buildingModalSection, setBuildingModalSection] = useState<string | undefined>(undefined);
 
+  // GTA VI Item Wheel, Graphics/Resolution Settings & Multi-Bank Vault Heist State
+  const [isItemWheelOpen, setIsItemWheelOpen] = useState<boolean>(false);
+  const [equippedItemId, setEquippedItemId] = useState<string | null>(null);
+  const [graphicsSettings, setGraphicsSettings] = useState<GraphicsSettings>({
+    resolutionScale: 1.0,
+    bloomEnabled: true,
+    shadowsEnabled: true,
+  });
+  const [vaultCamsDisabled, setVaultCamsDisabled] = useState<
+    Partial<Record<BankVaultSpec['id'], boolean>>
+  >({});
+  const [vaultCooldowns, setVaultCooldowns] = useState<
+    Partial<Record<BankVaultSpec['id'], number>>
+  >({});
+
   const openBuildingModal = useCallback((id: LagosDistrict, section?: string) => {
     setBuildingModalSection(section);
     setActiveBuildingId(id);
@@ -204,6 +223,7 @@ export default function LagosLifeGamePage() {
 
   const anyBlockingModal =
     isInventoryOpen ||
+    isItemWheelOpen ||
     isRadialOpen ||
     isScoreboardOpen ||
     isHeistOpen ||
@@ -1101,6 +1121,153 @@ export default function LagosLifeGamePage() {
     addNotification('24/7 Purchase', `Bought 1x ${shopItem.name}.`, 'success');
   };
 
+  // GTA VI Item Wheel — Remove / Drop items from pockets
+  const handleRemoveItem = useCallback(
+    (itemId: string, qty: number) => {
+      let removedName = '';
+      setPlayer((prev) => {
+        const nextItems = (prev.items || [])
+          .map((it) => {
+            if (it.id !== itemId) return it;
+            removedName = it.name;
+            return { ...it, quantity: it.quantity - qty };
+          })
+          .filter((it) => it.quantity > 0);
+        return { ...prev, items: nextItems };
+      });
+      setEquippedItemId((eq) =>
+        eq === itemId && !(player.items || []).some((i) => i.id === itemId && i.quantity > qty)
+          ? null
+          : eq
+      );
+      audioEngine.playClick();
+      setMeText({ text: '* drops an item on the ground *', ts: Date.now() });
+      setTimeout(() => {
+        addNotification('Item Removed 🗑️', `Dropped ${qty}x ${removedName || 'item'}.`, 'info');
+      }, 0);
+    },
+    [addNotification, player.items]
+  );
+
+  // Multi-Bank Vault Heist: Disable CCTV Cameras
+  const handleDisableVaultCameras = useCallback(
+    (bankId: BankVaultSpec['id']) => {
+      const spec = BANK_VAULTS_CATALOG.find((v) => v.id === bankId) ?? BANK_VAULTS_CATALOG[0];
+      if (vaultCamsDisabled[bankId]) {
+        addNotification('CCTV Already Looped', `${spec.camerasCount} cameras are showing a fake feed.`, 'info');
+        return;
+      }
+      const hasJammer = (player.items || []).some((i) => i.id === 'cctv_jammer');
+      const duration = hasJammer ? 1200 : 2600 + spec.tier * 900;
+      runActionBar(
+        hasJammer
+          ? `JAMMING ${spec.camerasCount} CCTV CAMERA FEEDS...`
+          : `SPLICING CCTV CABLES MANUALLY (${spec.camerasCount} CAMS)...`,
+        duration,
+        () => {
+          // Without a jammer, there is a chance a guard notices you
+          const caught = !hasJammer && Math.random() < 0.15 * spec.tier;
+          if (caught) {
+            audioEngine.playDispatchAlert();
+            setWantedStars((w) => Math.min(5, Math.max(w, spec.wantedStarsOnAlarm - 1)));
+            addNotification(
+              'Guard Spotted You! 🚨',
+              'A vault guard saw you tampering with the CCTV. Police dispatched!',
+              'dispatch'
+            );
+            return;
+          }
+          setVaultCamsDisabled((prev) => ({ ...prev, [bankId]: true }));
+          audioEngine.playRadioClick();
+          addNotification(
+            'CCTV Looped 📹',
+            `All ${spec.camerasCount} cameras at ${spec.name} are now looping old footage.`,
+            'success'
+          );
+        }
+      );
+    },
+    [addNotification, player.items, runActionBar, vaultCamsDisabled]
+  );
+
+  // Multi-Bank Vault Heist: Breach Vault (₦4.5M → ₦115M+ depending on bank tier & security)
+  const handleBreachVault = useCallback(
+    (bankId: BankVaultSpec['id']) => {
+      const spec = BANK_VAULTS_CATALOG.find((v) => v.id === bankId) ?? BANK_VAULTS_CATALOG[0];
+      const now = Date.now();
+      const cd = vaultCooldowns[bankId] ?? 0;
+      if (cd > now) {
+        const mins = Math.ceil((cd - now) / 60000);
+        addNotification('Vault Emptied', `${spec.name} is being restocked. Try again in ${mins} min.`, 'warning');
+        return;
+      }
+      const ids = new Set((player.items || []).map((i) => i.id));
+      const hasLaptop = ids.has('thermite_laptop') || ids.has('plasma_drill') || ids.has('c4_thermite');
+      if (!hasLaptop) {
+        addNotification(
+          'Missing Heist Tools',
+          'You need a Thermite Hack Laptop, Plasma Drill or C4 Thermite (Computer Village / 24/7 Supply).',
+          'warning'
+        );
+        return;
+      }
+      if (spec.tier === 3 && !ids.has('c4_thermite')) {
+        addNotification(
+          'Sovereign Door Too Thick',
+          'The CBN Bullion Reserve requires a C4 Thermite charge to breach.',
+          'warning'
+        );
+        return;
+      }
+      const camsOff = !!vaultCamsDisabled[bankId];
+      if (!camsOff) {
+        audioEngine.playDispatchAlert();
+        setWantedStars((w) => Math.min(5, Math.max(w, spec.wantedStarsOnAlarm)));
+        addNotification(
+          'SILENT ALARM TRIPPED 🚨',
+          `${spec.camerasCount} live cameras saw you! ${spec.wantedStarsOnAlarm}★ response en route.`,
+          'dispatch'
+        );
+      }
+      const drillMs = 2200 + spec.tier * 1400 - (ids.has('plasma_drill') ? 900 : 0);
+      runActionBar(
+        `BREACHING TIER ${spec.tier} VAULT DOOR — ${spec.securityLevel.toUpperCase()}...`,
+        drillMs,
+        () => {
+          let mult = 1;
+          if (ids.has('plasma_drill')) mult += 0.2;
+          if (ids.has('c4_thermite') && spec.tier < 3) mult += 0.1;
+          if (camsOff) mult += 0.08;
+          const base = spec.minLoot + Math.random() * (spec.maxLoot - spec.minLoot);
+          const loot = Math.round((base * mult) / 1000) * 1000;
+          audioEngine.playCashEarn();
+          setPlayer((p) => {
+            // Consume single-use C4 charge
+            const items = (p.items || [])
+              .map((it) => (it.id === 'c4_thermite' ? { ...it, quantity: it.quantity - 1 } : it))
+              .filter((it) => it.quantity > 0);
+            return { ...p, cash: p.cash + loot, items };
+          });
+          setVitals((v) => ({
+            ...v,
+            streetCred: Math.min(100, v.streetCred + 6 * spec.tier),
+            stress: Math.min(100, v.stress + 12 * spec.tier),
+          }));
+          setVaultCooldowns((prev) => ({ ...prev, [bankId]: Date.now() + 8 * 60000 }));
+          setVaultCamsDisabled((prev) => ({ ...prev, [bankId]: false }));
+          setWantedStars((w) => Math.min(5, Math.max(w, camsOff ? spec.tier : spec.wantedStarsOnAlarm)));
+          pushChat('system', 'DISPATCH', `10-90 in progress at ${spec.name}! All units respond.`);
+          addNotification(
+            `VAULT CRACKED 💰 ₦${loot.toLocaleString()}`,
+            `Bagged ₦${loot.toLocaleString()} from ${spec.name}! Escape the police and launder it.`,
+            'success'
+          );
+        }
+      );
+    },
+    [addNotification, player.items, pushChat, runActionBar, vaultCamsDisabled, vaultCooldowns]
+  );
+
   // Trigger a Random Real-Life RP Event
   const handleTriggerRandomEvent = useCallback(() => {
     const pick = ALL_LIFE_EVENTS[Math.floor(Math.random() * ALL_LIFE_EVENTS.length)];
@@ -1188,6 +1355,7 @@ export default function LagosLifeGamePage() {
       if (e.key === 'Escape') {
         setIsPhoneOpen(false);
         setIsRadialOpen(false);
+        setIsItemWheelOpen(false);
         setIsInventoryOpen(false);
         setIsScoreboardOpen(false);
         setIsHelpOpen(false);
@@ -1203,7 +1371,12 @@ export default function LagosLifeGamePage() {
         e.preventDefault();
         audioEngine.playClick();
         setIsRadialOpen((prev) => !prev);
-      } else if (e.key === 'Tab' || e.key.toLowerCase() === 'i') {
+      } else if (e.key === 'Tab') {
+        // GTA VI-style circular Item Wheel
+        e.preventDefault();
+        audioEngine.playClick();
+        setIsItemWheelOpen((prev) => !prev);
+      } else if (e.key.toLowerCase() === 'i') {
         e.preventDefault();
         audioEngine.playClick();
         setIsInventoryOpen((prev) => !prev);
@@ -1443,13 +1616,21 @@ export default function LagosLifeGamePage() {
         return;
       }
 
-      // 5. BANK BRANCH 3D STATIONS
+      // 5. BANK BRANCH 3D STATIONS (Zenith/Fleeca, GTCO & CBN share station IDs)
+      const insideBank: BankVaultSpec['id'] =
+        worldState.insideBuilding === 'gtbank' || worldState.insideBuilding === 'cbn'
+          ? worldState.insideBuilding
+          : 'fleeca';
       if (locationId === 'int:bank_teller' || locationId === 'int:bank_desk') {
-        openBuildingModal('fleeca');
+        openBuildingModal(insideBank);
+        return;
+      }
+      if (locationId === 'int:bank_cams') {
+        handleDisableVaultCameras(insideBank);
         return;
       }
       if (locationId === 'int:bank_vault') {
-        setIsHeistOpen(true);
+        handleBreachVault(insideBank);
         return;
       }
 
@@ -1560,6 +1741,9 @@ export default function LagosLifeGamePage() {
         'clothing',
         'quilox',
         'lagoon',
+        'cbn',
+        'gtbank',
+        'istore',
       ];
       if (validDistricts.includes(locationId as LagosDistrict)) {
         setEnterBuildingRequest({ id: locationId as LagosDistrict, ts: Date.now() });
@@ -1575,6 +1759,9 @@ export default function LagosLifeGamePage() {
       player.cash,
       runActionBar,
       worldState.nearInteractable?.name,
+      worldState.insideBuilding,
+      handleDisableVaultCameras,
+      handleBreachVault,
     ]
   );
 
@@ -1726,6 +1913,8 @@ export default function LagosLifeGamePage() {
         exitBuildingRequest={exitBuildingRequest}
         tuneVehicleRequest={tuneVehicleRequest}
         meText={meText}
+        graphicsSettings={graphicsSettings}
+        activeMissionJobKind={activeMission?.jobKind ?? null}
         onInteract={handleInteract}
         onRefuelRequest={handleRefuelRequest}
         onMissionReached={handleMissionReached}
@@ -1791,6 +1980,12 @@ export default function LagosLifeGamePage() {
           audioEngine.playClick();
           setIsRadialOpen(true);
         }}
+        onOpenItemWheel={() => {
+          audioEngine.playClick();
+          setIsItemWheelOpen(true);
+        }}
+        graphicsSettings={graphicsSettings}
+        onChangeGraphics={setGraphicsSettings}
         onOpenMap={() => {
           audioEngine.playClick();
           setIsMapOpen(true);
@@ -1978,6 +2173,30 @@ export default function LagosLifeGamePage() {
           setIsPhoneOpen(false);
           setEnterBuildingRequest({ id: bId, ts: Date.now() });
         }}
+        graphicsSettings={graphicsSettings}
+        onChangeGraphics={setGraphicsSettings}
+      />
+
+      {/* GTA VI Circular Item Wheel [TAB] — Equip, Use or Remove Items */}
+      <RadialWheelModal
+        isOpen={isItemWheelOpen}
+        onClose={() => setIsItemWheelOpen(false)}
+        inventory={player.items || []}
+        equippedItemId={equippedItemId}
+        onUseItem={(item) => {
+          setIsItemWheelOpen(false);
+          handleUseItem(item);
+        }}
+        onEquipItem={(id) => {
+          setEquippedItemId(id);
+          const it = (player.items || []).find((i) => i.id === id);
+          setMeText({
+            text: it ? `* pulls out ${it.name} *` : '* holsters everything *',
+            ts: Date.now(),
+          });
+        }}
+        onRemoveItem={handleRemoveItem}
+        onOpenPhone={() => setIsPhoneOpen(true)}
       />
 
       {/* Server Scoreboard & Fast-Spawn Modal [U] */}
@@ -2338,6 +2557,10 @@ export default function LagosLifeGamePage() {
         onOpenInventory={() => setIsInventoryOpen(true)}
         onOpenBennys={() => setIsBennysOpen(true)}
         onFlyToCity={handleFlyToCity}
+        vaultCamsDisabled={vaultCamsDisabled}
+        onDisableCameras={handleDisableVaultCameras}
+        onBreachVault={handleBreachVault}
+        onSpawnVehicle={(id) => setSpawnVehicleRequest({ id, timestamp: Date.now() })}
       />
 
       {/* Benny's Original Motorworks & Ron Petrol Service Bay */}
