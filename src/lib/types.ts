@@ -53,7 +53,31 @@ export interface InventoryItem {
   price?: number;
 }
 
-export type VehicleCategory = 'super' | 'suv' | 'transit' | 'police' | 'sedan';
+export type VehicleCategory =
+  | 'super'
+  | 'suv'
+  | 'transit'
+  | 'police'
+  | 'sedan'
+  | 'motorcycle'
+  | 'plane';
+
+export interface GraphicsSettings {
+  resolutionScale: number; // 0.5, 0.75, 1.0, 1.25, 1.5
+  bloomEnabled: boolean;
+  shadowsEnabled: boolean;
+}
+
+export interface BankTransaction {
+  id: string;
+  type: 'sent' | 'received' | 'deposit' | 'withdraw' | 'purchase';
+  counterparty: string;
+  bankName: string;
+  amount: number;
+  note: string;
+  timestamp: string;
+  sessionId: string;
+}
 
 export interface VehicleTelemetry {
   isDriving: boolean;
@@ -68,6 +92,7 @@ export interface VehicleTelemetry {
   seatbeltOn: boolean;
   lightsOn: boolean;
   sirenOn: boolean;
+  altitudeMeters?: number;
 }
 
 export interface OwnedVehicle {
@@ -213,6 +238,8 @@ export interface PlayerStats {
   homeSafeCash?: number;
   items: InventoryItem[];
   ownedVehicles: string[];
+  ownedPlanes?: string[];
+  transactions?: BankTransaction[];
   musicTracksReleased: number;
   fansCount: number;
 }
@@ -220,17 +247,36 @@ export interface PlayerStats {
 export type LagosDistrict =
   | 'shitta'
   | 'fleeca'
+  | 'gtbank'
+  | 'cbn'
   | 'pillbox'
   | 'mrpd'
   | 'yaba'
   | 'quilox'
   | 'computervillage'
+  | 'istore'
   | 'gas'
   | 'lekki'
   | 'clothing'
   | 'lagoon'
   | 'home'
   | 'airport';
+
+export interface BankVaultSpec {
+  id: 'fleeca' | 'gtbank' | 'cbn';
+  name: string;
+  abujaName: string;
+  tier: 1 | 2 | 3;
+  securityLevel: 'Standard CCTV & Guards' | 'Biometric Lasers & Armed Unit' | 'Sovereign Laser Grid & SWAT';
+  camerasCount: number;
+  guardsCount: number;
+  minLoot: number;
+  maxLoot: number;
+  requiredTool?: string;
+  wantedStarsOnAlarm: number;
+  color: string;
+  description: string;
+}
 
 export interface DistrictInfo {
   id: LagosDistrict;
@@ -262,9 +308,19 @@ export interface TweetItem {
   handle: string;
   avatarColor: string;
   verified: boolean;
+  badgeType?: 'blue' | 'gold' | 'gov';
   content: string;
   likes: number;
   retweets: number;
+  replies?: number;
+  views?: string;
+  liked?: boolean;
+  retweeted?: boolean;
+  bookmarked?: boolean;
+  mediaGradient?: string;
+  mediaCaption?: string;
+  imageDataUrl?: string;
+  comments?: { id: string; author: string; handle: string; text: string; timeAgo: string }[];
   timeAgo: string;
 }
 
@@ -279,7 +335,8 @@ export type JobKind =
   | 'race'
   | 'security'
   | 'banker'
-  | 'developer';
+  | 'developer'
+  | 'pilot';
 
 export interface ActiveMission {
   jobKind: JobKind;

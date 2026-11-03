@@ -16,6 +16,8 @@ import {
   VehicleCategory,
   CityId,
   LagosDistrict,
+  GraphicsSettings,
+  JobKind,
 } from '@/lib/types';
 import { DISTRICTS, getDistrictsForCity, VEHICLES_CATALOG, ATM_SPOTS } from '@/lib/gameState';
 import {
@@ -35,6 +37,7 @@ import {
 import { audioEngine } from '@/lib/audioEngine';
 import { buildHumanoid, animateHumanoid, applyOutfit, Humanoid, HumanoidState } from './world/humanoid';
 import { buildCar, CarModel } from './world/carModel';
+import { buildPlane, PlaneModel } from './world/planeModel';
 import { buildBuildingInterior, BuiltInterior } from './world/interiorBuilder';
 
 export type VehicleAction = 'enter_exit' | 'seatbelt' | 'lights' | 'siren';
@@ -43,6 +46,8 @@ export interface LagosWorld3DProps {
   outfit: PlayerStats['outfit'];
   activeCity?: CityId;
   solarKw?: number;
+  graphicsSettings?: GraphicsSettings;
+  activeMissionJobKind?: JobKind | null;
   timeOfDay: number; // 0..24 (fractional)
   weather: Weather;
   isNepaActive: boolean;
@@ -88,6 +93,8 @@ const TOP_SPEED_ACCEL: Record<VehicleCategory, number> = {
   suv: 18,
   sedan: 16,
   transit: 11,
+  motorcycle: 30,
+  plane: 34,
 };
 
 function angleLerp(a: number, b: number, t: number) {
@@ -296,18 +303,25 @@ function scaleBoxUVs(geo: THREE.BoxGeometry, w: number, h: number, d: number) {
 }
 
 function isOnRoad(x: number, z: number) {
+  if (x < -WORLD_HALF + 2) {
+    // Dedicated Airport Peninsula causeway & runway asphalt level
+    return true;
+  }
   return Math.abs(x - nearestRoad(x)) < ROAD_WIDTH / 2 || Math.abs(z - nearestRoad(z)) < ROAD_WIDTH / 2;
 }
 function groundY(x: number, z: number) {
+  if (x < -WORLD_HALF + 2 && Math.abs(z) < 88) return 0.08;
   if (z < -WORLD_HALF + 0.5) return 0.35;
   return isOnRoad(x, z) ? 0 : 0.12;
 }
 function clampToWorld(p: { x: number; z: number }) {
-  p.x = Math.max(-WORLD_HALF + 2, Math.min(WORLD_HALF - 2, p.x));
+  const minX = Math.abs(p.z) < 86 ? -242 : -WORLD_HALF + 2;
+  p.x = Math.max(minX, Math.min(WORLD_HALF - 2, p.x));
   p.z = Math.min(WORLD_HALF - 2, p.z);
   if (p.z < -WORLD_HALF + 1) {
     const onPier = Math.abs(p.x) < 1.8 && p.z > -WORLD_HALF - 20;
-    if (!onPier) p.z = -WORLD_HALF + 1;
+    const onAirport = p.x < -WORLD_HALF - 4 && p.z > -86;
+    if (!onPier && !onAirport) p.z = -WORLD_HALF + 1;
   }
 }
 
@@ -319,13 +333,30 @@ interface DrivableCar {
   vmax: number;
   model: CarModel;
   x: number;
+  y: number;
   z: number;
+  vy: number;
   heading: number;
+  pitch: number;
+  roll: number;
   vx: number;
   vz: number;
   steer: number;
   fuel: number;
   engine: number;
+}
+
+interface AmbientSkyPlane {
+  plane: PlaneModel;
+  mode: 'orbit' | 'linear';
+  y: number;
+  speed: number;
+  phase: number;
+  radius: number;
+  dirX: number;
+  dirZ: number;
+  x: number;
+  z: number;
 }
 
 interface TrafficCar {
@@ -405,6 +436,7 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
     setOutfit: (o: PlayerStats['outfit']) => void;
     enterInterior: (id: LagosDistrict) => void;
     exitInterior: () => void;
+    applyGraphics: (g?: GraphicsSettings) => void;
   } | null>(null);
 
   useEffect(() => {
@@ -420,13 +452,14 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       60,
       container.clientWidth / container.clientHeight,
       0.1,
-      650
+      950
     );
     camera.position.set(0, 6, 22);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
       powerPreference: 'high-performance',
+      preserveDrawingBuffer: true,
     });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
@@ -477,6 +510,25 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
     outdoorGroup.add(sun);
     outdoorGroup.add(sun.target);
 
+    const applyGraphics = (g?: GraphicsSettings) => {
+      const scale = g?.resolutionScale ?? 1.0;
+      const bloomOn = g?.bloomEnabled ?? true;
+      const shadowsOn = g?.shadowsEnabled ?? true;
+      const w = Math.max(1, container.clientWidth);
+      const h = Math.max(1, container.clientHeight);
+      const baseDpr = Math.min(window.devicePixelRatio || 1, 2);
+      const targetDpr = Math.max(0.35, Math.min(2.6, baseDpr * scale));
+      renderer.setPixelRatio(targetDpr);
+      renderer.setSize(w, h);
+      composer.setPixelRatio(targetDpr);
+      composer.setSize(w, h);
+      bloomPass.setSize(Math.max(1, Math.floor(w * scale)), Math.max(1, Math.floor(h * scale)));
+      bloomPass.enabled = bloomOn;
+      renderer.shadowMap.enabled = shadowsOn;
+      sun.castShadow = shadowsOn;
+    };
+    applyGraphics(propsRef.current.graphicsSettings);
+
     // ---------- Ocean + Textured Asphalt Ground ----------
     const ocean = new THREE.Mesh(
       new THREE.PlaneGeometry(950, 950),
@@ -507,13 +559,14 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
     outdoorGroup.add(ground);
     const roadMat = ground.material as THREE.MeshStandardMaterial;
 
-    // Sea wall around city perimeter
+    // Sea wall around city perimeter (with wide causeway opening on West side for the Airport Landmass)
     const wallMat = new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 0.85 });
     for (const [x, z, w, d] of [
       [0, WORLD_HALF, WORLD_HALF * 2, 1],
       [0, -WORLD_HALF, WORLD_HALF * 2, 1],
       [WORLD_HALF, 0, 1, WORLD_HALF * 2],
-      [-WORLD_HALF, 0, 1, WORLD_HALF * 2],
+      [-WORLD_HALF, -38, 1, 114],
+      [-WORLD_HALF, 75, 1, 40],
     ] as [number, number, number, number][]) {
       const wall = new THREE.Mesh(new THREE.BoxGeometry(w, 1.2, d), wallMat);
       wall.position.set(x, -0.1, z);
@@ -598,23 +651,106 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
     });
     outdoorGroup.add(zebras);
 
-    // Intersection Traffic Signal Gantries
+    // Intersection Traffic Signal Gantries (Red / Amber / Green live-cycling signals) + Street & Highway Signs
     const gantryMat = new THREE.MeshStandardMaterial({ color: 0x18181b, metalness: 0.7, roughness: 0.3 });
-    const greenLightMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x22c55e, emissiveIntensity: 1.8 });
-    const redLightMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 1.8 });
-    for (const rx of [-20, 20]) {
-      for (const rz of [-20, 20]) {
+    const trafficLightSets: {
+      red: THREE.MeshStandardMaterial;
+      amber: THREE.MeshStandardMaterial;
+      green: THREE.MeshStandardMaterial;
+      phaseOffset: number;
+    }[] = [];
+    for (const rx of [-60, -20, 20, 60]) {
+      for (const rz of [-60, -20, 20, 60]) {
+        const rMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.2 });
+        const aMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xf59e0b, emissiveIntensity: 0.2 });
+        const gMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x22c55e, emissiveIntensity: 1.9 });
+        trafficLightSets.push({ red: rMat, amber: aMat, green: gMat, phaseOffset: (rx + rz) * 0.08 });
+
         const post = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 5.8, 8), gantryMat);
         post.position.set(rx + 5.8, 2.9, rz + 5.8);
-        const arm = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.14, 0.14), gantryMat);
-        arm.position.set(rx + 4.1, 5.5, rz + 5.8);
-        const sigG = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), greenLightMat);
-        sigG.position.set(rx + 3.2, 5.32, rz + 5.8);
-        const sigR = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), redLightMat);
-        sigR.position.set(rx + 4.6, 5.32, rz + 5.8);
-        outdoorGroup.add(post, arm, sigG, sigR);
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.14, 0.14), gantryMat);
+        arm.position.set(rx + 4.0, 5.5, rz + 5.8);
+        const housing = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.44, 0.28), gantryMat);
+        housing.position.set(rx + 3.9, 5.3, rz + 5.8);
+        const sigR = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), rMat);
+        sigR.position.set(rx + 3.4, 5.3, rz + 5.95);
+        const sigA = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), aMat);
+        sigA.position.set(rx + 3.9, 5.3, rz + 5.95);
+        const sigG = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), gMat);
+        sigG.position.set(rx + 4.4, 5.3, rz + 5.95);
+        outdoorGroup.add(post, arm, housing, sigR, sigA, sigG);
       }
     }
+
+    // 3D Street Signs (STOP, SPEED LIMIT 60, ONE WAY) & Overhead Highway Gantry Signs
+    const stopSignTex = textTexture('STOP', '#dc2626', '#ffffff');
+    const speedSignTex = textTexture('60 KM/H', '#f8fafc', '#0f172a');
+    const signPoleMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.7, roughness: 0.3 });
+    for (const [sx, sz, isStop] of [
+      [-14.2, -14.2, true],
+      [14.2, 14.2, true],
+      [-54.2, 25.8, true],
+      [25.8, -54.2, true],
+      [-25.8, 54.2, false],
+      [54.2, 25.8, false],
+      [-65.8, 34.2, false],
+      [65.8, -14.2, false],
+    ] as [number, number, boolean][]) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 2.7, 8), signPoleMat);
+      pole.position.set(sx, 1.35, sz);
+      const board = new THREE.Mesh(
+        new THREE.BoxGeometry(0.85, 0.85, 0.06),
+        new THREE.MeshStandardMaterial({
+          map: isStop ? stopSignTex : speedSignTex,
+          roughness: 0.35,
+        })
+      );
+      board.position.set(sx, 2.55, sz);
+      outdoorGroup.add(pole, board);
+    }
+
+    // Overhead Green Expressway Direction Gantries
+    for (const [gx, gz, label] of [
+      [-55, 20, '← MMIA AIRPORT | CBN BULLION VAULT'],
+      [0, 20, '↑ ZENITH BANK | VICTORIA ISLAND →'],
+      [40, 60, '↑ GTCO CORPORATE BANK | YOUR RESIDENCE →'],
+    ] as [number, number, string][]) {
+      const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 7.4, 8), gantryMat);
+      legL.position.set(gx - 5.8, 3.7, gz);
+      const legR = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 7.4, 8), gantryMat);
+      legR.position.set(gx + 5.8, 3.7, gz);
+      const cross = new THREE.Mesh(new THREE.BoxGeometry(12.2, 0.22, 0.22), gantryMat);
+      cross.position.set(gx, 7.1, gz);
+      const hwyTex = textTexture(label, '#065f46', '#ffffff');
+      const hwyBoard = new THREE.Mesh(
+        new THREE.BoxGeometry(8.8, 1.45, 0.14),
+        new THREE.MeshStandardMaterial({
+          map: hwyTex,
+          emissive: 0xffffff,
+          emissiveMap: hwyTex,
+          emissiveIntensity: 0.45,
+        })
+      );
+      hwyBoard.position.set(gx, 6.9, gz);
+      outdoorGroup.add(legL, legR, cross, hwyBoard);
+    }
+
+    // Outdoor Panning 3D Security Cameras mounted on Banks, Police HQ, Tech Stores & Airport
+    const outdoorSecurityCameras: THREE.Group[] = [];
+    const cctvBodyM = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.65, roughness: 0.25 });
+    const cctvLedM = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 2.2 });
+    const addOutdoorCCTV = (x: number, y: number, z: number, baseYaw = 0) => {
+      const pivot = new THREE.Group();
+      pivot.position.set(x, y, z);
+      pivot.rotation.y = baseYaw;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.56), cctvBodyM);
+      body.rotation.x = 0.38;
+      const led = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), cctvLedM);
+      led.position.set(0.1, 0.08, 0.28);
+      pivot.add(body, led);
+      outdoorGroup.add(pivot);
+      outdoorSecurityCameras.push(pivot);
+    };
 
     // ---------- Outdoor Buildings & Landmarks ----------
     const colliders: AABB[] = [];
@@ -801,53 +937,156 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
           break;
         }
         case 'airport': {
-          // FAAN International Airport Terminal + Control Tower + 3D Commercial Jet at (-77.5, 40)
-          addBox(bx, bz - 2, 20, 12, 9.8, getWindowMat(0x0c4a6e), { windows: true });
-          addBox(bx, bz + 4.8, 21, 3.2, 0.42, glowMat(0x38bdf8), { y: 5.1, collide: false });
-          const s = addSign('MMIA AIRPORT (LOS)', '#082f49', '#7dd3fc', bx, 7.6, bz + 4.08, 12, 1.3);
-          dynamicSigns.set('airport', { mesh: s, bg: '#082f49', fg: '#7dd3fc' });
-          addEntrancePortal('airport', bx, bz + 4.0, d.x, d.z, d.color);
-
-          // Air Traffic Control Tower
-          const towerShaft = new THREE.Mesh(
-            new THREE.CylinderGeometry(1.5, 2.1, 22, 14),
-            new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.45 })
+          // =========================================================================
+          // DEDICATED INTERNATIONAL AIRPORT PENINSULA LANDMASS (x = -95..-245, z = -88..+88)
+          // Completely separate from city streets — just like real life & GTA VI!
+          // =========================================================================
+          // 1. Causeway Bridge & Master Concrete Airfield Apron Slab
+          const apronSlab = new THREE.Mesh(
+            new THREE.BoxGeometry(152, 0.28, 176),
+            new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.86, metalness: 0.08 })
           );
-          towerShaft.position.set(bx - 8.2, 11, bz - 6);
+          apronSlab.position.set(-170, -0.06, 0);
+          apronSlab.receiveShadow = true;
+          outdoorGroup.add(apronSlab);
+
+          const causewayRoad = new THREE.Mesh(
+            new THREE.BoxGeometry(28, 0.16, 22),
+            new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.78 })
+          );
+          causewayRoad.position.set(-103, 0.01, 40);
+          causewayRoad.receiveShadow = true;
+          outdoorGroup.add(causewayRoad);
+
+          // 2. Full-Scale Asphalt Runway 18L / 36R (x = -212, z = -82..+82)
+          const runwayMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(26, 0.08, 166),
+            new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.75 })
+          );
+          runwayMesh.position.set(-212, 0.1, 0);
+          runwayMesh.receiveShadow = true;
+          outdoorGroup.add(runwayMesh);
+
+          const rwyLineMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+          for (let rz = -72; rz <= 72; rz += 10) {
+            const stripe = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 5.2), rwyLineMat);
+            stripe.rotation.x = -Math.PI / 2;
+            stripe.position.set(-212, 0.15, rz);
+            outdoorGroup.add(stripe);
+          }
+          // Piano-key threshold markings at both ends of Runway 18L/36R
+          for (const endZ of [-78, 78]) {
+            for (let kx = -9; kx <= 9; kx += 3) {
+              const keyM = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 5.5), rwyLineMat);
+              keyM.rotation.x = -Math.PI / 2;
+              keyM.position.set(-212 + kx, 0.15, endZ);
+              outdoorGroup.add(keyM);
+            }
+          }
+          // Glowing Runway Edge Lights
+          const rwyEdgeMat = glowMat(0x38bdf8);
+          for (let rz = -80; rz <= 80; rz += 16) {
+            for (const ex of [-224.5, -199.5]) {
+              const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), rwyEdgeMat);
+              bulb.position.set(ex, 0.3, rz);
+              outdoorGroup.add(bulb);
+            }
+          }
+
+          // 3. Colossal International Passenger Terminal (x = -131, z = 40)
+          addBox(-131, 40, 22, 34, 11.5, getWindowMat(0x0c4a6e), { windows: true });
+          addBox(-119, 40, 4.2, 35, 0.48, glowMat(0x38bdf8), { y: 5.8, collide: false });
+          const s = addSign('MMIA INTL AIRPORT (LOS)', '#082f49', '#7dd3fc', -119.8, 8.6, 40, 16, 1.35);
+          s.rotation.y = Math.PI / 2;
+          dynamicSigns.set('airport', { mesh: s, bg: '#082f49', fg: '#7dd3fc' });
+
+          // Terminal East Entrance Portal facing (-114, 40)
+          doorPositions.set('airport', { x: -119.5, z: 40 });
+          addBox(-119.6, 40, 0.3, 4.2, 3.4, glowMat(0x38bdf8), { collide: false, cast: false });
+          addOutdoorCCTV(-119.5, 5.4, 34, Math.PI / 2);
+          addOutdoorCCTV(-119.5, 5.4, 46, Math.PI / 2);
+
+          // 4. 34-Meter Air Traffic Control Tower
+          const towerShaft = new THREE.Mesh(
+            new THREE.CylinderGeometry(1.9, 2.7, 30, 16),
+            new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.42 })
+          );
+          towerShaft.position.set(-134, 15, 68);
           towerShaft.castShadow = true;
           outdoorGroup.add(towerShaft);
-          const towerCab = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 2.2, 3.4, 14), glowMat(0x38bdf8));
-          towerCab.position.set(bx - 8.2, 23.2, bz - 6);
+          const towerCab = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 2.9, 4.2, 16), glowMat(0x38bdf8));
+          towerCab.position.set(-134, 31.5, 68);
           outdoorGroup.add(towerCab);
 
-          // 3D Commercial Boeing 737 / Airbus Jet on Apron
-          const jetGroup = new THREE.Group();
-          const fuseMat = new THREE.MeshPhysicalMaterial({
-            color: 0xf8fafc,
-            metalness: 0.25,
-            roughness: 0.18,
-            clearcoat: 1.0,
-          });
-          const wingMat = new THREE.MeshPhysicalMaterial({
-            color: 0x0284c7,
-            metalness: 0.45,
-            roughness: 0.22,
-            clearcoat: 0.8,
-          });
-          const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 15.5, 16), fuseMat);
-          fuselage.rotation.x = Math.PI / 2;
-          fuselage.position.y = 2.1;
-          const nose = new THREE.Mesh(new THREE.SphereGeometry(1.3, 16, 12), fuseMat);
-          nose.scale.set(1, 0.92, 1.6);
-          nose.position.set(0, 2.05, 7.8);
-          const wings = new THREE.Mesh(new THREE.BoxGeometry(17.2, 0.22, 3.2), wingMat);
-          wings.position.set(0, 1.9, 0.5);
-          const tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.32, 4.4, 2.9), wingMat);
-          tailFin.position.set(0, 4.3, -6.4);
-          jetGroup.add(fuselage, nose, wings, tailFin);
-          jetGroup.position.set(bx + 2.5, 0.12, bz - 10.5);
-          jetGroup.rotation.y = Math.PI / 2;
-          outdoorGroup.add(jetGroup);
+          // 5. Three Giant Steel-Arch Aircraft Hangars (Hangar 1 Executive, Hangar 2 Charter, Hangar 3 Cargo)
+          const hangarWallMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.65, roughness: 0.35 });
+          const hangarRoofMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.5, roughness: 0.45 });
+          for (const [hz, label] of [
+            [-15, 'HANGAR 01 • VIP JETS'],
+            [-55, 'HANGAR 02 • CHARTER'],
+            [70, 'HANGAR 03 • AIRCARGO'],
+          ] as [number, string][]) {
+            // Left, Right & Back Hangar Walls (Open on West side facing Runway!)
+            addBox(-160, hz - 11, 24, 1.2, 8.5, hangarWallMat);
+            addBox(-160, hz + 11, 24, 1.2, 8.5, hangarWallMat);
+            addBox(-148.5, hz, 1.2, 22, 8.5, hangarWallMat);
+            addBox(-160, hz, 24.6, 23.2, 0.9, hangarRoofMat, { y: 8.5, collide: false });
+            const hs = addSign(label, '#0f172a', '#38bdf8', -172.2, 7.6, hz, 12, 1.1);
+            hs.rotation.y = -Math.PI / 2;
+          }
+
+          // 6. Multiple Static Commercial Airliners & Private Jets across Gates & Tarmac
+          const fleetSpecs: [number, number, number, string, string, number][] = [
+            [-154, 30, -Math.PI / 2, '#f8fafc', '#0284c7', 1.22], // Gate A1 Air Peace Boeing 737
+            [-154, 50, -Math.PI / 2, '#f8fafc', '#16a34a', 1.25], // Gate A2 Ibom Air Airbus A220
+            [-160, 70, -Math.PI / 2, '#e2e8f0', '#f59e0b', 1.18], // Hangar 3 Cargo Jet
+            [-184, -35, 0, '#0f172a', '#38bdf8', 0.95], // Taxiway Executive Jet
+          ];
+          for (const [px, pz, ry, bodyC, stripeC, sc] of fleetSpecs) {
+            const pJet = buildPlane(bodyC, stripeC, sc, false);
+            pJet.group.position.set(px, 0.12, pz);
+            pJet.group.rotation.y = ry;
+            outdoorGroup.add(pJet.group);
+          }
+          break;
+        }
+        case 'cbn': {
+          // Central Bank of Nigeria (CBN) Sovereign Bullion Fortress at (-77.5, 40)
+          addBox(bx, bz - 2, 22, 16, 18.5, getWindowMat(0x422006), { windows: true });
+          addBox(bx, bz + 6.2, 22.6, 0.6, 0.7, glowMat(0xeab308), { y: 11.5, collide: false });
+          // Armored Gold Bullion Columns
+          const goldColMat = new THREE.MeshStandardMaterial({ color: 0xca8a04, metalness: 0.85, roughness: 0.2 });
+          for (const cx of [-8, -4, 4, 8]) {
+            addBox(bx + cx, bz + 6.3, 0.9, 0.9, 11, goldColMat, { collide: false });
+          }
+          const s = addSign('CENTRAL BANK (CBN VAULT)', '#422006', '#fde047', bx, 12.8, bz + 6.12, 13.5, 1.4);
+          dynamicSigns.set('cbn', { mesh: s, bg: '#422006', fg: '#fde047' });
+          addEntrancePortal('cbn', bx, bz + 6.0, d.x, d.z, d.color);
+          addOutdoorCCTV(bx - 9, 6.2, bz + 6.3, 0.3);
+          addOutdoorCCTV(bx + 9, 6.2, bz + 6.3, -0.3);
+          break;
+        }
+        case 'gtbank': {
+          // GTCO / Access Corporate Investment Bank Tower at (40, 77.5)
+          const gbz = bz === 80 ? 77.5 : bz;
+          addBox(bx, gbz, 20, 15, 16.5, getWindowMat(0x9a3412), { windows: true });
+          addBox(bx, gbz - 7.6, 20.4, 0.5, 0.65, glowMat(0xf97316), { y: 10.2, collide: false });
+          const s = addSign('GTCO CORPORATE BANK', '#7c2d12', '#fed7aa', bx, 11.4, gbz - 7.62, 12, 1.3);
+          s.rotation.y = Math.PI;
+          dynamicSigns.set('gtbank', { mesh: s, bg: '#7c2d12', fg: '#fed7aa' });
+          addEntrancePortal('gtbank', bx, gbz - 7.5, d.x, d.z, d.color);
+          addOutdoorCCTV(bx - 8, 5.8, gbz - 7.6, Math.PI);
+          addOutdoorCCTV(bx + 8, 5.8, gbz - 7.6, Math.PI);
+          break;
+        }
+        case 'istore': {
+          // iStore & CyberDeck Flagship Apple/Android Megastore at (77.5, 0)
+          addBox(bx, bz - 2, 19, 14, 10.5, getWindowMat(0x0f172a), { windows: true });
+          addBox(bx, bz + 5.1, 19.4, 0.45, 0.55, glowMat(0x38bdf8), { y: 6.8, collide: false });
+          const s = addSign('iSTORE & CYBERDECK HUB', '#082f49', '#e0f2fe', bx, 8.2, bz + 5.08, 12, 1.35);
+          dynamicSigns.set('istore', { mesh: s, bg: '#082f49', fg: '#e0f2fe' });
+          addEntrancePortal('istore', bx, bz + 5.0, d.x, d.z, d.color);
+          addOutdoorCCTV(bx - 7.5, 5.2, bz + 5.2, 0);
           break;
         }
         case 'shitta': {
@@ -1152,7 +1391,7 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       outdoorGroup.add(atm);
     }
 
-    // ---------- Mission & Waypoint Markers ----------
+    // ---------- Mission & Waypoint Markers + Realistic 3D Job Scene Actors ----------
     const missionGroup = new THREE.Group();
     const beamMat = new THREE.MeshBasicMaterial({
       color: 0xfacc15,
@@ -1182,8 +1421,99 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
     );
     chevron.rotation.x = Math.PI;
     missionGroup.add(missionBeam, missionRing, chevron);
+
+    // 3D Job Actors attached to active mission sites
+    const missionCustomerNpc = buildHumanoid({
+      shirt: '#0ea5e9',
+      pants: '#1e293b',
+      skin: '#6d4023',
+      hat: 'sunglasses',
+    });
+    missionCustomerNpc.root.position.set(1.6, 0, 1.2);
+    missionGroup.add(missionCustomerNpc.root);
+
+    const missionPatientNpc = buildHumanoid({
+      shirt: '#f8fafc',
+      pants: '#334155',
+      skin: '#8d5524',
+      hat: 'none',
+    });
+    missionPatientNpc.root.position.set(0.8, 0.05, 0.6);
+    missionGroup.add(missionPatientNpc.root);
+
+    const missionSuspectNpc = buildHumanoid({
+      shirt: '#18181b',
+      pants: '#09090b',
+      skin: '#4a2c17',
+      hat: 'cap',
+    });
+    missionSuspectNpc.root.position.set(-1.5, 0, 1.0);
+    missionGroup.add(missionSuspectNpc.root);
+
+    const missionBrokenCar = buildCar('sedan', '#475569', false);
+    missionBrokenCar.group.position.set(2.2, 0, -0.5);
+    missionBrokenCar.group.rotation.y = 0.35;
+    missionGroup.add(missionBrokenCar.group);
+
+    const missionSkyRing = new THREE.Mesh(
+      new THREE.TorusGeometry(6.2, 0.36, 14, 40),
+      new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.9,
+      })
+    );
+    missionSkyRing.position.set(0, 42, 0);
+    missionGroup.add(missionSkyRing);
+
     missionGroup.visible = false;
     outdoorGroup.add(missionGroup);
+
+    // ---------- 3 Live Ambient Sky Airliners & Executive Jets Overhead ----------
+    const ambientPlanes: AmbientSkyPlane[] = [
+      {
+        plane: buildPlane('#f8fafc', '#0284c7', 1.38, false),
+        mode: 'linear',
+        y: 48,
+        speed: 22,
+        phase: 0,
+        radius: 0,
+        dirX: 0.78,
+        dirZ: 0.62,
+        x: -140,
+        z: -110,
+      },
+      {
+        plane: buildPlane('#f8fafc', '#16a34a', 1.18, false),
+        mode: 'orbit',
+        y: 66,
+        speed: 0.19,
+        phase: 1.4,
+        radius: 108,
+        dirX: 0,
+        dirZ: 0,
+        x: 0,
+        z: 0,
+      },
+      {
+        plane: buildPlane('#0f172a', '#f59e0b', 1.26, false),
+        mode: 'linear',
+        y: 84,
+        speed: 27,
+        phase: 2.8,
+        radius: 0,
+        dirX: -0.92,
+        dirZ: 0.39,
+        x: 150,
+        z: -60,
+      },
+    ];
+    for (const ap of ambientPlanes) {
+      ap.plane.gearGroup.visible = false;
+      ap.plane.contrailGroup.visible = true;
+      ap.plane.group.rotation.order = 'YXZ';
+      outdoorGroup.add(ap.plane.group);
+    }
 
     const waypointMarker = new THREE.Mesh(
       new THREE.CylinderGeometry(1.6, 1.6, 30, 20, 1, true),
@@ -1227,6 +1557,7 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       hat: P0.outfit.hat,
       castShadow: true,
     });
+    player.root.rotation.order = 'YXZ';
     scene.add(player.root);
     const pState = {
       x: 77.5, // Start right outside Your Residence compound so player sees their house immediately!
@@ -1254,17 +1585,23 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       });
     };
 
-    // ---------- Drivable Vehicles ----------
+    // ---------- Drivable Vehicles, Motorcycles & Private Jets ----------
     const parkSpots: Record<string, [number, number, number]> = {
-      'veh-gwagon': [72, 56.5, Math.PI / 2], // Parked right on the avenue outside Your Residence!
+      'veh-gwagon': [72, 56.5, Math.PI / 2], // Outside Your Residence!
+      'veh-okada': [66, 56.5, Math.PI / 2], // Boxer 250cc Motorcycle right outside Your Residence!
+      'veh-ducati': [35, -23.5, -Math.PI / 2], // Ducati Panigale V4S Superbike at VI / Quilox!
       'veh-super': [7, 16.5, -Math.PI / 2],
       'veh-danfo': [-8, 23.5, Math.PI / 2],
       'veh-police': [8, -23.5, Math.PI / 2],
-      'veh-taxi': [-68, 56.5, -Math.PI / 2], // Taxi waiting right outside Airport Terminal!
+      'veh-taxi': [-110, 48.5, Math.PI / 2], // Airport Shuttle Taxi waiting outside Airport Causeway!
+      'plane-cessna': [-162, -15, -Math.PI / 2], // Parked in Hangar 01 on the Dedicated Airport Landmass!
+      'plane-challenger': [-162, -55, -Math.PI / 2], // Parked in Hangar 02 on the Dedicated Airport Landmass!
+      'plane-gulfstream': [-212, -52, 0], // Lined up on Runway 18L/36R ready for immediate takeoff!
     };
     const cars: DrivableCar[] = VEHICLES_CATALOG.map((v, i) => {
       const [x, z, h] = parkSpots[v.id] ?? [i * 6, 23.5, 0];
       const model = buildCar(v.category, v.color, true);
+      model.group.rotation.order = 'YXZ';
       model.group.position.set(x, 0, z);
       model.group.rotation.y = h;
       outdoorGroup.add(model.group);
@@ -1276,8 +1613,12 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
         vmax: v.topSpeedKmh / SPEED_TO_KMH,
         model,
         x,
+        y: 0,
         z,
+        vy: 0,
         heading: h,
+        pitch: 0,
+        roll: 0,
         vx: 0,
         vz: 0,
         steer: 0,
@@ -1291,21 +1632,50 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
     headlight.position.set(0, 1, 2.2);
     headlight.target.position.set(0, 0, 12);
 
-    // ---------- AI Traffic ----------
+    // ---------- AI Traffic (Cars + Motorcycles with 3D Riders!) ----------
     const traffic: TrafficCar[] = [];
     const trafficBlocks: [number, number][] = [];
     for (const bx of INNER_BLOCKS) for (const bz of INNER_BLOCKS) trafficBlocks.push([bx, bz]);
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 12; i++) {
       const [bx, bz] = trafficBlocks[i % trafficBlocks.length];
-      const cat = pick<VehicleCategory>(['sedan', 'sedan', 'suv', 'transit', 'super', 'sedan']);
-      const model = buildCar(cat, cat === 'transit' ? '#facc15' : pick(TRAFFIC_COLORS), false);
+      const cat = pick<VehicleCategory>([
+        'sedan',
+        'sedan',
+        'suv',
+        'transit',
+        'super',
+        'motorcycle',
+        'motorcycle',
+      ]);
+      const col =
+        cat === 'transit'
+          ? '#facc15'
+          : cat === 'motorcycle'
+          ? pick(['#f97316', '#dc2626', '#18181b', '#2563eb'])
+          : pick(TRAFFIC_COLORS);
+      const model = buildCar(cat, col, false);
+      if (cat === 'motorcycle') {
+        const aiRider = buildHumanoid({
+          shirt: pick(SHIRTS),
+          pants: '#18181b',
+          skin: pick(SKINS),
+          hat: 'cap',
+        });
+        aiRider.root.position.set(0, 0.14, -0.22);
+        aiRider.torso.rotation.x = 0.28;
+        aiRider.armL.rotation.x = -0.95;
+        aiRider.armR.rotation.x = -0.95;
+        aiRider.legL.rotation.x = -0.7;
+        aiRider.legR.rotation.x = -0.7;
+        model.group.add(aiRider.root);
+      }
       outdoorGroup.add(model.group);
       traffic.push({
         model,
         loop: blockLoop(bx, bz, 17.5),
         s: Math.random() * 140,
         speed: 0,
-        maxSpeed: 7 + Math.random() * 4,
+        maxSpeed: cat === 'motorcycle' ? 10 + Math.random() * 4 : 7 + Math.random() * 4,
         x: 0,
         z: 0,
         heading: 0,
@@ -1359,6 +1729,17 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
     placeNpc(1.5, -76, Math.PI, 'sit');
     placeNpc(-38, 11, 0.3, 'idle');
     placeNpc(-4, -25, 0, 'salute');
+    // Additional Outdoor Workers across Banks, Airport Tarmac, Tech Hub & Gas Station
+    placeNpc(-74, 48, 0, 'salute'); // CBN Bullion Guard
+    placeNpc(-81, 48, 0, 'salute'); // CBN Bullion Guard
+    placeNpc(36, 68, Math.PI, 'salute'); // GTBank Security Guard
+    placeNpc(44, 68, Math.PI, 'salute'); // GTBank Security Guard
+    placeNpc(-116, 36, Math.PI / 2, 'wave'); // Airport Terminal Valet Worker
+    placeNpc(-148, 24, -Math.PI / 2, 'wave'); // Airport Tarmac Ground Marshal
+    placeNpc(-172, -15, -Math.PI / 2, 'idle'); // Hangar 01 Aircraft Engineer
+    placeNpc(-172, -55, -Math.PI / 2, 'idle'); // Hangar 02 Aircraft Mechanic
+    placeNpc(74, 8, 0, 'wave'); // iStore Outdoor Promoter
+    placeNpc(-3, 44, 0, 'idle'); // NNPC Fuel Attendant
 
     // ---------- Police AI ----------
     const police: PoliceUnit[] = [];
@@ -1391,16 +1772,30 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       if (activeInterior) return;
       if (activeCar) {
         const car = activeCar;
+        if (car.category === 'plane' && car.y > 7) {
+          // Prevent accidental mid-air bailout; descend below 25ft to disembark
+          audioEngine.playSeatbeltChime();
+          return;
+        }
+        const offsetDist = car.category === 'plane' ? 3.8 : 2.2;
         const left = { x: Math.cos(car.heading), z: -Math.sin(car.heading) };
-        let ex = car.x + left.x * 2.2;
-        let ez = car.z + left.z * 2.2;
+        let ex = car.x + left.x * offsetDist;
+        let ez = car.z + left.z * offsetDist;
         if (blocked(ex, ez, 0.4)) {
-          ex = car.x - left.x * 2.2;
-          ez = car.z - left.z * 2.2;
+          ex = car.x - left.x * offsetDist;
+          ez = car.z - left.z * offsetDist;
         }
         pState.x = ex;
         pState.z = ez;
+        pState.y = groundY(ex, ez);
+        pState.vy = 0;
+        pState.grounded = true;
         pState.heading = car.heading;
+        player.root.rotation.set(0, car.heading, 0);
+        car.y = groundY(car.x, car.z);
+        car.vy = 0;
+        car.pitch = 0;
+        car.roll = 0;
         car.model.group.remove(headlight, headlight.target);
         activeCar = null;
         carFlags.seatbelt = false;
@@ -1409,10 +1804,11 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
         return;
       }
       let best: DrivableCar | null = null;
-      let bd = 4.2;
+      let bd = 7.0;
       for (const c of cars) {
+        const maxEnterDist = c.category === 'plane' ? 6.8 : 4.2;
         const dd = Math.hypot(c.x - pState.x, c.z - pState.z);
-        if (dd < bd) {
+        if (dd < maxEnterDist && dd < bd) {
           bd = dd;
           best = c;
         }
@@ -1655,13 +2051,11 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
     canvas.addEventListener('wheel', onWheel, { passive: true });
 
     const onResize = () => {
-      const w = container.clientWidth;
-      const h = container.clientHeight;
+      const w = Math.max(1, container.clientWidth);
+      const h = Math.max(1, container.clientHeight);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
-      composer.setSize(w, h);
-      bloomPass.setSize(w, h);
+      applyGraphics(propsRef.current.graphicsSettings);
     };
     window.addEventListener('resize', onResize);
 
@@ -1676,6 +2070,8 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
         if (activeCar) {
           activeCar.x = x;
           activeCar.z = z + 3;
+          activeCar.y = groundY(x, z + 3);
+          activeCar.vy = 0;
           activeCar.vx = activeCar.vz = 0;
         }
         pState.x = x;
@@ -1697,11 +2093,24 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
         const rx = nearestRoad(pState.x);
         const rz = nearestRoad(pState.z);
         const useX = Math.abs(rx - pState.x) < Math.abs(rz - pState.z);
-        car.x = useX ? rx + 2.5 : pState.x;
-        car.z = useX ? pState.z : rz + 2.5;
-        car.heading = useX ? 0 : Math.PI / 2;
+        if (car.category === 'plane') {
+          car.x = useX ? rx : pState.x;
+          car.z = useX ? pState.z : rz;
+          car.heading = useX ? 0 : Math.PI / 2;
+          car.y = groundY(car.x, car.z);
+          car.vy = 0;
+          car.pitch = 0;
+          car.roll = 0;
+          if (car.model.gearGroup) car.model.gearGroup.visible = true;
+        } else {
+          car.x = useX ? rx + 2.5 : pState.x;
+          car.z = useX ? pState.z : rz + 2.5;
+          car.heading = useX ? 0 : Math.PI / 2;
+          car.y = groundY(car.x, car.z);
+          car.vy = 0;
+        }
         car.vx = car.vz = 0;
-        car.fuel = Math.max(car.fuel, 60);
+        car.fuel = Math.max(car.fuel, 85);
         if (activeCar !== car) {
           activeCar = car;
           car.model.group.add(headlight, headlight.target);
@@ -1742,6 +2151,7 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       },
       enterInterior: enterInteriorRoom,
       exitInterior: exitInteriorRoom,
+      applyGraphics,
     };
 
     // ---------- Main Loop ----------
@@ -1802,18 +2212,39 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       const night = 1 - day;
 
       if (activeInterior) {
+        // Tone down exposure & bloom indoors so building interiors look rich, grounded, and never over-bright!
+        renderer.toneMappingExposure = 0.75;
+        bloomPass.strength = 0.11;
         skyColor.lerp(indoorBg, Math.min(1, dt * 8));
         fog.color.copy(skyColor);
         fog.density = 0.0015;
-        // Animate indoor NPCs & floating station markers
+        // Animate indoor NPCs, panning security cameras & floating station markers
         for (const n of activeInterior.npcs) {
           animateHumanoid(n.h, n.state, 0, t + n.h.phase, dt);
         }
+        activeInterior.securityCameras?.forEach((sc, idx) => {
+          sc.rotation.y = Math.sin(t * 1.25 + idx * 1.7) * 0.65;
+        });
         activeInterior.animatedRings.forEach((r, idx) => {
           r.scale.y = 1 + Math.sin(t * 3.2 + idx) * 0.16;
           activeInterior!.animatedSprites[idx].position.y = 2.35 + Math.sin(t * 2.4 + idx) * 0.1;
         });
       } else {
+        renderer.toneMappingExposure = 1.04;
+        bloomPass.strength = 0.28;
+        // Cycle outdoor traffic signals (Green -> Amber -> Red) & pan outdoor CCTV cameras
+        trafficLightSets.forEach((tls) => {
+          const cycle = (t + tls.phaseOffset) % 14;
+          const isGreen = cycle < 6.5;
+          const isAmber = cycle >= 6.5 && cycle < 8.5;
+          const isRed = cycle >= 8.5;
+          tls.green.emissiveIntensity = isGreen ? 2.2 : 0.12;
+          tls.amber.emissiveIntensity = isAmber ? 2.2 : 0.12;
+          tls.red.emissiveIntensity = isRed ? 2.2 : 0.12;
+        });
+        outdoorSecurityCameras.forEach((camG, idx) => {
+          camG.rotation.y = Math.sin(t * 1.1 + idx) * 0.55;
+        });
         const dusk = THREE.MathUtils.clamp(1 - Math.abs(elev) * 4, 0, 1) * (elev > -0.25 ? 1 : 0);
         fogTarget.copy(nightSky).lerp(daySky, day).lerp(duskSky, dusk * 0.48);
         const wet = p.weather === 'rain' ? 1 : 0;
@@ -1880,156 +2311,280 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
 
       if (activeCar && !activeInterior) {
         const car = activeCar;
-        player.root.visible = false;
-        const f = { x: Math.sin(car.heading), z: Math.cos(car.heading) };
-        let fwd = car.vx * f.x + car.vz * f.z;
-        let latX = car.vx - f.x * fwd;
-        let latZ = car.vz - f.z * fwd;
-        const handbrake = !locked && keys[' '];
-        const canDrive = car.fuel > 0 && car.engine > 0;
-        const accel = TOP_SPEED_ACCEL[car.category] * (car.engine < 20 ? 0.35 : 1);
-        let braking = false;
-        if (fwdIn > 0 && canDrive) {
-          fwd += accel * (1 - Math.max(0, fwd) / car.vmax) * dt;
-        } else if (fwdIn < 0) {
-          if (fwd > 0.6) {
-            fwd -= 32 * dt;
+        const isPlane = car.category === 'plane';
+        const isMoto = car.category === 'motorcycle';
+
+        if (isPlane) {
+          // ---------------- 3D Aircraft Flight & Runway Taxi Physics ----------------
+          player.root.visible = false;
+          const climbIn = locked
+            ? 0
+            : (keys[' '] ? 1 : 0) - (keys['c'] || keys['control'] ? 1 : 0);
+          const afterburner = !locked && keys['shift'] ? 1.24 : 1.0;
+          const canFly = car.fuel > 0 && car.engine > 0;
+          const f = { x: Math.sin(car.heading), z: Math.cos(car.heading) };
+          let fwd = car.vx * f.x + car.vz * f.z;
+          const maxSpd = car.vmax * afterburner;
+
+          if (fwdIn > 0 && canFly) {
+            fwd += TOP_SPEED_ACCEL.plane * afterburner * (1 - Math.max(0, fwd) / maxSpd) * dt;
+          } else if (fwdIn < 0) {
+            if (fwd > 1) fwd -= 22 * dt;
+            else if (car.y < 1.2 && canFly) fwd = Math.max(-8, fwd - 10 * dt);
+          } else {
+            fwd *= Math.exp(-(car.y > 2 ? 0.14 : 0.38) * dt);
+          }
+
+          const speedRatio = Math.min(1, Math.abs(fwd) / car.vmax);
+          const turnRate = -sideIn * (car.y > 2 ? 0.95 : 0.72 * Math.min(1, Math.abs(fwd) / 6));
+          car.heading += turnRate * dt;
+          car.steer += (-sideIn * 0.45 - car.steer) * Math.min(1, dt * 6);
+
+          const nf = { x: Math.sin(car.heading), z: Math.cos(car.heading) };
+          car.vx = nf.x * fwd;
+          car.vz = nf.z * fwd;
+
+          // Vertical Lift, Climb & Descent
+          const gy = groundY(car.x, car.z);
+          if (climbIn > 0 && fwd > 8.5 && canFly) {
+            car.vy += (15 - car.vy) * Math.min(1, dt * 3.5);
+          } else if (climbIn < 0) {
+            car.vy += (-14 - car.vy) * Math.min(1, dt * 3.8);
+          } else if (car.y > gy + 0.5) {
+            // Level cruise trim if fast enough, gentle stall sink if slow
+            const targetVy = fwd > 11 ? 0 : -6.5;
+            car.vy += (targetVy - car.vy) * Math.min(1, dt * 3.0);
+          } else {
+            car.vy = 0;
+          }
+
+          car.y = Math.min(148, car.y + car.vy * dt);
+          if (car.y <= gy) {
+            car.y = gy;
+            car.vy = 0;
+          }
+
+          const nx = car.x + car.vx * dt;
+          const nz = car.z + car.vz * dt;
+          if (car.y < 24 && blocked(nx, nz, 1.8)) {
+            car.vx *= -0.25;
+            car.vz *= -0.25;
+            audioEngine.playCrash(0.45);
+          } else {
+            car.x = Math.max(-WORLD_HALF - 85, Math.min(WORLD_HALF + 85, nx));
+            car.z = Math.max(-WORLD_HALF - 85, Math.min(WORLD_HALF + 85, nz));
+          }
+
+          if (car.fuel > 0 && Math.abs(fwd) > 0.5) {
+            car.fuel = Math.max(0, car.fuel - dt * (0.09 + speedRatio * 0.22));
+          }
+
+          // Smooth Pitch & Bank Attitude
+          const targetPitch = car.y > gy + 0.4 ? -climbIn * 0.28 - (car.vy * 0.012) : -Math.max(0, climbIn) * 0.12;
+          const targetRoll = car.y > gy + 0.6 ? sideIn * 0.52 : sideIn * 0.05;
+          car.pitch = THREE.MathUtils.lerp(car.pitch, targetPitch, Math.min(1, dt * 5));
+          car.roll = THREE.MathUtils.lerp(car.roll, targetRoll, Math.min(1, dt * 5));
+
+          car.model.group.position.set(car.x, car.y, car.z);
+          car.model.group.rotation.set(car.pitch, car.heading, car.roll, 'YXZ');
+          car.model.frontWheels.forEach((w) => (w.rotation.y = car.steer));
+          if (car.y < gy + 1) {
+            car.model.wheelMeshes.forEach((w) => (w.rotation.x += (fwd / 0.32) * dt));
+          }
+          if (car.model.gearGroup) car.model.gearGroup.visible = car.y < gy + 7.5;
+          if (car.model.contrailGroup) car.model.contrailGroup.visible = car.y > 14 && fwd > 12;
+          car.model.fanMeshes?.forEach((fan) => (fan.rotation.y += dt * (10 + speedRatio * 36)));
+          if (car.model.strobeMat) {
+            car.model.strobeMat.emissiveIntensity = Math.sin(t * 10) > 0.68 ? 4.5 : 0.25;
+          }
+          const isNight = night > 0.45;
+          car.model.headMat.emissiveIntensity = carFlags.lights && isNight ? 2.8 : 0.8;
+          headlight.intensity = carFlags.lights && isNight && car.y < 18 ? 65 : 0;
+          audioEngine.setEngine(true, 22 + speedRatio * 78);
+
+          pState.x = car.x;
+          pState.y = car.y;
+          pState.z = car.z;
+          pState.heading = car.heading;
+          pState.speed = Math.abs(fwd);
+        } else {
+          // ---------------- Ground Cars & 3D Motorcycles ----------------
+          player.root.visible = isMoto;
+          const f = { x: Math.sin(car.heading), z: Math.cos(car.heading) };
+          let fwd = car.vx * f.x + car.vz * f.z;
+          let latX = car.vx - f.x * fwd;
+          let latZ = car.vz - f.z * fwd;
+          const handbrake = !locked && keys[' '];
+          const canDrive = car.fuel > 0 && car.engine > 0;
+          const accel = TOP_SPEED_ACCEL[car.category] * (car.engine < 20 ? 0.35 : 1);
+          let braking = false;
+          if (fwdIn > 0 && canDrive) {
+            fwd += accel * (1 - Math.max(0, fwd) / car.vmax) * dt;
+          } else if (fwdIn < 0) {
+            if (fwd > 0.6) {
+              fwd -= 32 * dt;
+              braking = true;
+            } else if (canDrive) {
+              fwd = Math.max(-car.vmax * 0.3, fwd - accel * 0.6 * dt);
+            }
+          } else {
+            fwd *= Math.exp(-0.45 * dt);
+            fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 1.2 * dt);
+          }
+          if (handbrake) {
+            fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 10 * dt);
             braking = true;
-          } else if (canDrive) {
-            fwd = Math.max(-car.vmax * 0.3, fwd - accel * 0.6 * dt);
           }
-        } else {
-          fwd *= Math.exp(-0.45 * dt);
-          fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 1.2 * dt);
-        }
-        if (handbrake) {
-          fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 10 * dt);
-          braking = true;
-        }
-        const speedRatio = Math.min(1, Math.abs(fwd) / car.vmax);
-        const steerTarget = -sideIn * 0.6 * (1 - 0.55 * speedRatio);
-        car.steer += (steerTarget - car.steer) * Math.min(1, dt * 8);
-        const yawRate = (fwd / 2.7) * Math.tan(car.steer) * (handbrake ? 1.6 : 1);
-        car.heading += yawRate * dt;
-        const grip = handbrake ? 1.2 : 8.5;
-        const decay = Math.exp(-grip * dt);
-        latX *= decay;
-        latZ *= decay;
-        const nf = { x: Math.sin(car.heading), z: Math.cos(car.heading) };
-        car.vx = nf.x * fwd + latX;
-        car.vz = nf.z * fwd + latZ;
+          const speedRatio = Math.min(1, Math.abs(fwd) / car.vmax);
+          const steerTarget = -sideIn * (isMoto ? 0.68 : 0.6) * (1 - 0.52 * speedRatio);
+          car.steer += (steerTarget - car.steer) * Math.min(1, dt * (isMoto ? 10 : 8));
+          const yawRate = (fwd / (isMoto ? 2.15 : 2.7)) * Math.tan(car.steer) * (handbrake ? 1.6 : 1);
+          car.heading += yawRate * dt;
+          const grip = handbrake ? 1.2 : isMoto ? 10.5 : 8.5;
+          const decay = Math.exp(-grip * dt);
+          latX *= decay;
+          latZ *= decay;
+          const nf = { x: Math.sin(car.heading), z: Math.cos(car.heading) };
+          car.vx = nf.x * fwd + latX;
+          car.vz = nf.z * fwd + latZ;
 
-        const nx = car.x + car.vx * dt;
-        const nz = car.z + car.vz * dt;
-        const r = car.model.radius * 0.7;
-        let impact = 0;
-        if (blocked(nx, nz, r)) {
-          impact = Math.hypot(car.vx, car.vz);
-          car.vx *= -0.3;
-          car.vz *= -0.3;
-        } else {
-          car.x = nx;
-          car.z = nz;
-        }
-        const others: { x: number; z: number; push?: (dx: number, dz: number) => void }[] = [
-          ...cars
-            .filter((c) => c !== car)
-            .map((c) => ({
-              x: c.x,
-              z: c.z,
-              push: (dx: number, dz: number) => {
-                c.x += dx;
-                c.z += dz;
-              },
-            })),
-          ...traffic.map((c) => ({ x: c.x, z: c.z })),
-          ...police.filter((u) => u.active).map((u) => ({ x: u.x, z: u.z })),
-        ];
-        for (const o of others) {
-          const dx = car.x - o.x;
-          const dz = car.z - o.z;
-          const dd = Math.hypot(dx, dz);
-          if (dd < 3.1 && dd > 0.001) {
-            const pen = 3.1 - dd;
-            car.x += (dx / dd) * pen * 0.7;
-            car.z += (dz / dd) * pen * 0.7;
-            o.push?.((-dx / dd) * pen * 0.3, (-dz / dd) * pen * 0.3);
-            impact = Math.max(impact, Math.hypot(car.vx, car.vz) * 0.8);
-            car.vx *= 0.5;
-            car.vz *= 0.5;
+          const nx = car.x + car.vx * dt;
+          const nz = car.z + car.vz * dt;
+          const r = car.model.radius * 0.7;
+          let impact = 0;
+          if (blocked(nx, nz, r)) {
+            impact = Math.hypot(car.vx, car.vz);
+            car.vx *= -0.3;
+            car.vz *= -0.3;
+          } else {
+            car.x = nx;
+            car.z = nz;
           }
-        }
-        clampToWorld(car);
-
-        if (impact > 5) {
-          car.engine = Math.max(0, car.engine - impact * 0.7);
-          cam.shake = Math.min(1, impact / 22);
-          audioEngine.playCrash(Math.min(1, impact / 25));
-          if (impact > 15 && !carFlags.seatbelt) {
-            const carRef = car;
-            enterOrExit();
-            pState.x = carRef.x + f.x * 3;
-            pState.z = carRef.z + f.z * 3;
-            if (blocked(pState.x, pState.z, 0.4)) {
-              pState.x = carRef.x - f.x * 3;
-              pState.z = carRef.z - f.z * 3;
-            }
-            pState.ejectT = 2.2;
-            p.onDamage(Math.round(impact * 1.6), 'You flew through the windscreen — wear your seatbelt [B]!');
-          } else if (impact > 10) {
-            p.onDamage(Math.round(impact * (carFlags.seatbelt ? 0.2 : 0.6)), 'Crash');
-          }
-        }
-
-        const carSpeed = Math.hypot(car.vx, car.vz);
-        if (activeCar && carSpeed > 5) {
-          for (const ped of peds) {
-            if (ped.downT <= 0 && Math.hypot(ped.x - car.x, ped.z - car.z) < 1.9) {
-              ped.downT = 9;
-              p.onCrime('Vehicular assault on a pedestrian');
+          const others: { x: number; z: number; push?: (dx: number, dz: number) => void }[] = [
+            ...cars
+              .filter((c) => c !== car && c.y < 3)
+              .map((c) => ({
+                x: c.x,
+                z: c.z,
+                push: (dx: number, dz: number) => {
+                  c.x += dx;
+                  c.z += dz;
+                },
+              })),
+            ...traffic.map((c) => ({ x: c.x, z: c.z })),
+            ...police.filter((u) => u.active).map((u) => ({ x: u.x, z: u.z })),
+          ];
+          const hitDist = isMoto ? 2.2 : 3.1;
+          for (const o of others) {
+            const dx = car.x - o.x;
+            const dz = car.z - o.z;
+            const dd = Math.hypot(dx, dz);
+            if (dd < hitDist && dd > 0.001) {
+              const pen = hitDist - dd;
+              car.x += (dx / dd) * pen * 0.7;
+              car.z += (dz / dd) * pen * 0.7;
+              o.push?.((-dx / dd) * pen * 0.3, (-dz / dd) * pen * 0.3);
+              impact = Math.max(impact, Math.hypot(car.vx, car.vz) * 0.8);
+              car.vx *= 0.5;
+              car.vz *= 0.5;
             }
           }
-        }
+          clampToWorld(car);
 
-        if (car.fuel > 0 && Math.abs(fwd) > 0.5)
-          car.fuel = Math.max(0, car.fuel - dt * (0.12 + speedRatio * 0.35));
-
-        const gy = groundY(car.x, car.z);
-        car.model.group.position.set(car.x, gy, car.z);
-        car.model.group.rotation.y = car.heading;
-        car.model.group.rotation.z = THREE.MathUtils.lerp(
-          car.model.group.rotation.z,
-          -car.steer * speedRatio * 0.08,
-          0.2
-        );
-        car.model.frontWheels.forEach((w) => (w.rotation.y = car.steer));
-        car.model.wheelMeshes.forEach((w) => (w.rotation.x += (fwd / 0.36) * dt));
-        const isNight = night > 0.45;
-        car.model.tailMat.emissiveIntensity = braking ? 3 : carFlags.lights && isNight ? 1.1 : 0.45;
-        car.model.headMat.emissiveIntensity = carFlags.lights && isNight ? 2.6 : 0.55;
-        headlight.intensity = carFlags.lights && isNight ? 65 : 0;
-        if (car.model.barRed && car.model.barBlue) {
-          const on = carFlags.siren;
-          const ph = Math.floor(t * 6) % 2;
-          car.model.barRed.emissiveIntensity = on && ph === 0 ? 4 : 0.2;
-          car.model.barBlue.emissiveIntensity = on && ph === 1 ? 4 : 0.2;
-          if (on) {
-            sirenCd -= dt;
-            if (sirenCd <= 0) {
-              audioEngine.playPoliceSiren();
-              sirenCd = 1.4;
+          if (impact > 5) {
+            car.engine = Math.max(0, car.engine - impact * 0.7);
+            cam.shake = Math.min(1, impact / 22);
+            audioEngine.playCrash(Math.min(1, impact / 25));
+            if (impact > (isMoto ? 12 : 15) && !carFlags.seatbelt) {
+              const carRef = car;
+              enterOrExit();
+              pState.x = carRef.x + f.x * 3;
+              pState.z = carRef.z + f.z * 3;
+              if (blocked(pState.x, pState.z, 0.4)) {
+                pState.x = carRef.x - f.x * 3;
+                pState.z = carRef.z - f.z * 3;
+              }
+              pState.ejectT = 2.2;
+              p.onDamage(
+                Math.round(impact * 1.6),
+                isMoto
+                  ? 'You were thrown off your bike — strap your helmet [B]!'
+                  : 'You flew through the windscreen — wear your seatbelt [B]!'
+              );
+            } else if (impact > 10) {
+              p.onDamage(Math.round(impact * (carFlags.seatbelt ? 0.2 : 0.6)), 'Crash');
             }
           }
-        }
-        audioEngine.setEngine(true, speedRatio * 100);
 
-        pState.x = car.x;
-        pState.z = car.z;
-        pState.heading = car.heading;
-        pState.speed = Math.abs(fwd);
+          const carSpeed = Math.hypot(car.vx, car.vz);
+          if (activeCar && carSpeed > 5) {
+            for (const ped of peds) {
+              if (ped.downT <= 0 && Math.hypot(ped.x - car.x, ped.z - car.z) < 1.9) {
+                ped.downT = 9;
+                p.onCrime('Vehicular assault on a pedestrian');
+              }
+            }
+          }
+
+          if (car.fuel > 0 && Math.abs(fwd) > 0.5)
+            car.fuel = Math.max(0, car.fuel - dt * (0.12 + speedRatio * 0.35));
+
+          const gy = groundY(car.x, car.z);
+          car.y = gy;
+          car.model.group.position.set(car.x, gy, car.z);
+          car.model.group.rotation.y = car.heading;
+          const targetLean = isMoto
+            ? -car.steer * (0.25 + speedRatio * 0.65)
+            : -car.steer * speedRatio * 0.08;
+          car.roll = THREE.MathUtils.lerp(car.roll, targetLean, isMoto ? 0.24 : 0.2);
+          car.model.group.rotation.z = car.roll;
+          car.model.frontWheels.forEach((w) => (w.rotation.y = car.steer));
+          car.model.wheelMeshes.forEach((w) => (w.rotation.x += (fwd / 0.35) * dt));
+
+          // Pose 3D Player Character astride the Motorcycle leaning into corners!
+          if (isMoto) {
+            player.root.position.set(car.x - nf.x * 0.22, gy + 0.14, car.z - nf.z * 0.22);
+            player.root.rotation.set(0, car.heading, car.roll, 'YXZ');
+            player.hips.position.y = 0.68;
+            player.torso.rotation.set(0.34, 0, 0);
+            player.head.rotation.set(-0.22, -car.steer * 0.4, 0);
+            player.armL.rotation.set(-0.98, 0, 0.14);
+            player.armR.rotation.set(-0.98, 0, -0.14);
+            player.legL.rotation.set(-0.72, 0, 0.18);
+            player.legR.rotation.set(-0.72, 0, -0.18);
+            player.phone.visible = false;
+          }
+
+          const isNight = night > 0.45;
+          car.model.tailMat.emissiveIntensity = braking ? 3 : carFlags.lights && isNight ? 1.1 : 0.45;
+          car.model.headMat.emissiveIntensity = carFlags.lights && isNight ? 2.6 : 0.55;
+          headlight.intensity = carFlags.lights && isNight ? 65 : 0;
+          if (car.model.barRed && car.model.barBlue) {
+            const on = carFlags.siren;
+            const ph = Math.floor(t * 6) % 2;
+            car.model.barRed.emissiveIntensity = on && ph === 0 ? 4 : 0.2;
+            car.model.barBlue.emissiveIntensity = on && ph === 1 ? 4 : 0.2;
+            if (on) {
+              sirenCd -= dt;
+              if (sirenCd <= 0) {
+                audioEngine.playPoliceSiren();
+                sirenCd = 1.4;
+              }
+            }
+          }
+          audioEngine.setEngine(true, speedRatio * 100);
+
+          pState.x = car.x;
+          pState.y = gy;
+          pState.z = car.z;
+          pState.heading = car.heading;
+          pState.speed = Math.abs(fwd);
+        }
       } else {
         // ---------------- On Foot (Outdoors OR Inside 3D Building!) ----------------
         player.root.visible = true;
+        player.root.rotation.x = 0;
+        player.root.rotation.z = 0;
         if (pState.ejectT > 0) pState.ejectT -= dt;
         const moving = (fwdIn !== 0 || sideIn !== 0) && pState.ejectT <= 0;
         const canSprint = keys['shift'] && p.energy > 3;
@@ -2101,13 +2656,15 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
         audioEngine.setEngine(false, 0);
       }
 
-      // Player animation state
-      let anim: HumanoidState = 'idle';
-      if (p.isDowned || pState.ejectT > 0) anim = 'down';
-      else if (!pState.grounded) anim = 'jump';
-      else if (pState.speed > 0.1 && !activeCar) anim = isSprinting ? 'run' : 'walk';
-      else if (p.emote !== 'none') anim = p.emote;
-      animateHumanoid(player, anim, pState.speed, t, dt, p.holdingPhone && !activeCar);
+      // Player animation state (skip overriding limbs when astride a motorcycle!)
+      if (!(activeCar && activeCar.category === 'motorcycle' && !activeInterior)) {
+        let anim: HumanoidState = 'idle';
+        if (p.isDowned || pState.ejectT > 0) anim = 'down';
+        else if (!pState.grounded) anim = 'jump';
+        else if (pState.speed > 0.1 && !activeCar) anim = isSprinting ? 'run' : 'walk';
+        else if (p.emote !== 'none') anim = p.emote;
+        animateHumanoid(player, anim, pState.speed, t, dt, p.holdingPhone && !activeCar);
+      }
 
       if (meLabel && performance.now() > meLabel.until) {
         player.root.remove(meLabel.sprite);
@@ -2117,12 +2674,43 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       // ======== Outdoor AI Simulation (Only when Outdoors) ========
       let missionDistance: number | null = null;
       if (!activeInterior) {
+        // Animate Live Ambient Sky Airliners & Jets Overhead!
+        ambientPlanes.forEach((ap, idx) => {
+          if (ap.mode === 'orbit') {
+            ap.phase += ap.speed * dt;
+            const nx = Math.cos(ap.phase) * ap.radius;
+            const nz = Math.sin(ap.phase) * ap.radius;
+            const vx = -Math.sin(ap.phase);
+            const vz = Math.cos(ap.phase);
+            ap.x = nx;
+            ap.z = nz;
+            const head = Math.atan2(vx, vz);
+            ap.plane.group.position.set(nx, ap.y + Math.sin(t * 0.6 + idx) * 1.2, nz);
+            ap.plane.group.rotation.set(0, head, 0.24, 'YXZ');
+          } else {
+            ap.x += ap.dirX * ap.speed * dt;
+            ap.z += ap.dirZ * ap.speed * dt;
+            if (ap.x > 195) ap.x = -195;
+            if (ap.x < -195) ap.x = 195;
+            if (ap.z > 195) ap.z = -195;
+            if (ap.z < -195) ap.z = 195;
+            const head = Math.atan2(ap.dirX, ap.dirZ);
+            ap.plane.group.position.set(ap.x, ap.y, ap.z);
+            ap.plane.group.rotation.set(0, head, 0, 'YXZ');
+          }
+          ap.plane.fanMeshes.forEach((f) => (f.rotation.y += dt * 32));
+          ap.plane.strobeMat.emissiveIntensity = Math.sin(t * 9 + idx * 2.1) > 0.7 ? 4.8 : 0.25;
+        });
+
         for (const c of cars) {
           if (c === activeCar) continue;
-          c.model.group.position.set(c.x, groundY(c.x, c.z), c.z);
-          c.model.group.rotation.y = c.heading;
+          c.y = groundY(c.x, c.z);
+          c.model.group.position.set(c.x, c.y, c.z);
+          c.model.group.rotation.set(0, c.heading, 0, 'YXZ');
           c.model.headMat.emissiveIntensity = 0.25;
           c.model.tailMat.emissiveIntensity = 0.25;
+          if (c.model.gearGroup) c.model.gearGroup.visible = true;
+          if (c.model.contrailGroup) c.model.contrailGroup.visible = false;
           if (c.model.barRed) c.model.barRed.emissiveIntensity = 0.2;
           if (c.model.barBlue) c.model.barBlue.emissiveIntensity = 0.2;
         }
@@ -2297,6 +2885,7 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
         });
         if (p.missionTarget) {
           const mt = p.missionTarget;
+          const jk = p.activeMissionJobKind;
           missionGroup.visible = true;
           missionGroup.position.set(mt.x, groundY(mt.x, mt.z), mt.z);
           (missionRing.material as THREE.MeshBasicMaterial).color.set(mt.color);
@@ -2305,8 +2894,50 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
           missionRing.scale.setScalar(1 + Math.sin(t * 4) * 0.08);
           chevron.position.y = 3 + Math.sin(t * 3) * 0.3;
           chevron.rotation.y = t * 2;
+
+          // Realistic 3D Job Actors at active checkpoint!
+          const showCustomer = jk === 'taxi' || jk === 'delivery' || jk === 'banker' || jk === 'developer';
+          const showPatient = jk === 'ems';
+          const showSuspect = jk === 'police' || jk === 'security' || jk === 'heist';
+          const showBrokenCar = jk === 'mechanic';
+          const showSkyRing = jk === 'pilot';
+
+          missionCustomerNpc.root.visible = showCustomer;
+          if (showCustomer) animateHumanoid(missionCustomerNpc, 'wave', 0, t, dt);
+
+          missionPatientNpc.root.visible = showPatient;
+          if (showPatient) animateHumanoid(missionPatientNpc, 'down', 0, t, dt);
+
+          missionSuspectNpc.root.visible = showSuspect;
+          if (showSuspect) {
+            const dSus = Math.hypot(mt.x - pState.x, mt.z - pState.z);
+            animateHumanoid(missionSuspectNpc, dSus < 11 ? 'handsup' : 'idle', 0, t, dt);
+          }
+
+          missionBrokenCar.group.visible = showBrokenCar;
+          if (showBrokenCar) {
+            const blink = Math.floor(t * 4) % 2 === 0 ? 3.2 : 0.2;
+            missionBrokenCar.tailMat.emissiveIntensity = blink;
+            missionBrokenCar.headMat.emissiveIntensity = blink * 0.6;
+          }
+
+          missionSkyRing.visible = showSkyRing;
+          if (showSkyRing) {
+            const isAirportApproach = mt.x < -55 && mt.z > 40;
+            missionSkyRing.position.y = isAirportApproach ? 6 : 42;
+            missionSkyRing.rotation.y = t * 0.8;
+          }
+
           missionDistance = Math.hypot(mt.x - pState.x, mt.z - pState.z);
-          if (missionDistance < (activeCar ? 5.5 : 3.2) && lastMissionReached !== mt.id && !locked) {
+          const triggerRadius =
+            jk === 'pilot'
+              ? 14.5
+              : activeCar
+              ? activeCar.category === 'plane'
+                ? 12.5
+                : 5.5
+              : 3.2;
+          if (missionDistance < triggerRadius && lastMissionReached !== mt.id && !locked) {
             lastMissionReached = mt.id;
             p.onMissionReached(mt.id);
           }
@@ -2329,20 +2960,23 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
         }
       }
 
-      // ======== Camera (Outdoor + Indoor Cutaway/Chase/First-Person) ========
+      // ======== Camera (Outdoor + Indoor + Aerial Chase/Cockpit) ========
       const now = performance.now();
+      const flyingPlane = activeCar && !activeInterior && activeCar.category === 'plane';
       if (p.cameraMode === 'isometric') {
-        const isoDist = activeInterior ? 11 : 22;
-        const isoHeight = activeInterior ? 16 : 30;
+        const isoDist = activeInterior ? 11 : flyingPlane ? 32 : 22;
+        const isoHeight = activeInterior ? 16 : flyingPlane ? pState.y + 34 : 30;
         tmpV.set(pState.x + isoDist * 0.6, isoHeight, pState.z + isoDist);
         camera.position.lerp(tmpV, Math.min(1, dt * 5));
-        camera.lookAt(pState.x, 1, pState.z);
+        camera.lookAt(pState.x, flyingPlane ? pState.y + 1.5 : 1, pState.z);
       } else if (p.cameraMode === 'hood') {
         if (activeCar && !activeInterior) {
           const fx = Math.sin(activeCar.heading);
           const fz = Math.cos(activeCar.heading);
-          camera.position.set(activeCar.x + fx * 0.45, 1.38, activeCar.z + fz * 0.45);
-          camera.lookAt(activeCar.x + fx * 28, 1.25, activeCar.z + fz * 28);
+          const camH = flyingPlane ? activeCar.y + 2.35 : 1.38;
+          const fwdOff = flyingPlane ? 4.2 : 0.45;
+          camera.position.set(activeCar.x + fx * fwdOff, camH, activeCar.z + fz * fwdOff);
+          camera.lookAt(activeCar.x + fx * 34, camH - 0.15, activeCar.z + fz * 34);
           cam.yaw = activeCar.heading;
         } else {
           player.root.visible = false;
@@ -2356,16 +2990,22 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
         const speedFrac = activeCar && !activeInterior ? Math.min(1, pState.speed / activeCar.vmax) : 0;
         if (activeCar && !activeInterior && now - cam.lastInput > 1400 && pState.speed > 2) {
           cam.yaw = angleLerp(cam.yaw, activeCar.heading, Math.min(1, dt * 2.5));
-          cam.pitch += (0.22 - cam.pitch) * Math.min(1, dt * 1.5);
+          cam.pitch += ((flyingPlane ? 0.18 : 0.22) - cam.pitch) * Math.min(1, dt * 1.5);
         }
         const dist = activeInterior
           ? Math.min(4.4, cam.dist)
+          : flyingPlane
+          ? Math.max(14.5, cam.dist + 8) + speedFrac * 3.5
           : activeCar
           ? Math.max(7.5, cam.dist + 2.5) + speedFrac * 2
           : cam.dist;
         const target = tmpV2.set(
           pState.x,
-          activeCar && !activeInterior ? 1.6 : pState.y + 1.55,
+          flyingPlane
+            ? pState.y + 2.2
+            : activeCar && !activeInterior
+            ? 1.6
+            : pState.y + 1.55,
           pState.z
         );
         const fx = Math.sin(cam.yaw);
@@ -2376,13 +3016,15 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
           target.y + dist * Math.sin(cam.pitch) + 0.3,
           target.z - fz * dist * Math.cos(cam.pitch) + Math.sin(cam.yaw) * shoulder
         );
-        const dir = desiredPos.clone().sub(target);
-        const len = dir.length();
-        raycaster.set(target, dir.normalize());
-        raycaster.far = len;
-        const activeBlockers = activeInterior ? activeInterior.cameraBlockers : cameraBlockers;
-        const hit = raycaster.intersectObjects(activeBlockers, false)[0];
-        if (hit) desiredPos.copy(target).addScaledVector(dir, Math.max(1.1, hit.distance - 0.35));
+        if (!(flyingPlane && pState.y > 14)) {
+          const dir = desiredPos.clone().sub(target);
+          const len = dir.length();
+          raycaster.set(target, dir.normalize());
+          raycaster.far = len;
+          const activeBlockers = activeInterior ? activeInterior.cameraBlockers : cameraBlockers;
+          const hit = raycaster.intersectObjects(activeBlockers, false)[0];
+          if (hit) desiredPos.copy(target).addScaledVector(dir, Math.max(1.1, hit.distance - 0.35));
+        }
         if (desiredPos.y < 0.4) desiredPos.y = 0.4;
         if (activeInterior && desiredPos.y > 5.0) desiredPos.y = 5.0;
         camera.position.lerp(desiredPos, Math.min(1, dt * (activeCar ? 10 : 18)));
@@ -2392,7 +3034,7 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
           cam.shake = Math.max(0, cam.shake - dt * 2);
         }
         camera.lookAt(target.x + fx * 1.5, target.y, target.z + fz * 1.5);
-        const fov = 60 + speedFrac * 16;
+        const fov = 60 + speedFrac * (flyingPlane ? 18 : 16);
         if (Math.abs(camera.fov - fov) > 0.1) {
           camera.fov += (fov - camera.fov) * Math.min(1, dt * 3);
           camera.updateProjectionMatrix();
@@ -2408,7 +3050,8 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
         let nearVehicle: WorldRealtimeState['nearVehicle'] = null;
         if (!activeCar && !activeInterior) {
           for (const c of cars) {
-            if (Math.hypot(c.x - pState.x, c.z - pState.z) < 4.2) {
+            const enterDist = c.category === 'plane' ? 6.8 : 4.2;
+            if (Math.hypot(c.x - pState.x, c.z - pState.z) < enterDist) {
               nearVehicle = { id: c.id, name: c.name, color: c.color };
               break;
             }
@@ -2427,6 +3070,8 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
           cameraMode: p.cameraMode,
           streetName: activeInterior
             ? activeInterior.title
+            : car && car.category === 'plane' && car.y > 8
+            ? `${activeCity === 'abuja' ? 'Abuja' : 'Lagos'} Airspace • ${Math.round(car.y * 3.281)} FT`
             : getStreetName(pState.x, pState.z, activeCity),
           isSprinting,
           nearVehicle,
@@ -2449,6 +3094,7 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
             seatbeltOn: carFlags.seatbelt,
             lightsOn: carFlags.lights,
             sirenOn: carFlags.siren,
+            altitudeMeters: car ? Math.max(0, car.y) : 0,
           },
           police: police.filter((u) => u.active).map((u) => ({ x: u.x, z: u.z })),
           missionDistance,
@@ -2485,6 +3131,10 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       if (container.contains(canvas)) container.removeChild(canvas);
     };
   }, []);
+
+  useEffect(() => {
+    apiRef.current?.applyGraphics(props.graphicsSettings);
+  }, [props.graphicsSettings]);
 
   useEffect(() => {
     if (props.teleportRequest)
