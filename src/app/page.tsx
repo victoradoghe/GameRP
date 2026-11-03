@@ -115,6 +115,11 @@ export default function LagosLifeGamePage() {
     boostLevel?: number;
     ts: number;
   } | null>(null);
+  const [enterBuildingRequest, setEnterBuildingRequest] = useState<{
+    id: LagosDistrict;
+    ts: number;
+  } | null>(null);
+  const [exitBuildingRequest, setExitBuildingRequest] = useState<number | null>(null);
 
   // RP / OOC Chat State
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
@@ -123,7 +128,7 @@ export default function LagosLifeGamePage() {
       id: 'c-init-1',
       kind: 'system',
       author: 'SYSTEM',
-      text: 'Welcome to NoPixel V // Eko City! Click the 3D world to look around, [M] Phone, [F1] Emotes/Menu.',
+      text: 'Welcome to NoPixel V // Eko & Abuja 3D! Walk up to ANY building door and press [E] to enter its full 3D interior!',
       ts: Date.now(),
     },
     {
@@ -188,6 +193,12 @@ export default function LagosLifeGamePage() {
   const [isBennysOpen, setIsBennysOpen] = useState<boolean>(false);
   const [activePedName, setActivePedName] = useState<string | null>(null);
   const [activeBuildingId, setActiveBuildingId] = useState<LagosDistrict | null>(null);
+  const [buildingModalSection, setBuildingModalSection] = useState<string | undefined>(undefined);
+
+  const openBuildingModal = useCallback((id: LagosDistrict, section?: string) => {
+    setBuildingModalSection(section);
+    setActiveBuildingId(id);
+  }, []);
 
   const isDowned = vitals.health <= 0;
 
@@ -317,8 +328,20 @@ export default function LagosLifeGamePage() {
   // ==================== IN-WORLD 3D MISSION ENGINE ====================
   const handleStartMission = useCallback(
     (kind: JobKind) => {
-      const shitta = DISTRICTS.find((d) => d.id === 'shitta')!;
-      const fleeca = DISTRICTS.find((d) => d.id === 'fleeca')!;
+      const cityList = getDistrictsForCity(player.activeCity || 'lagos');
+      const shitta = cityList.find((d) => d.id === 'shitta')!;
+      const fleeca = cityList.find((d) => d.id === 'fleeca')!;
+      const yaba = cityList.find((d) => d.id === 'yaba')!;
+
+      // If starting an outdoor street shift while inside a 3D room, step outside automatically!
+      if (worldState.insideBuilding && kind !== 'heist') {
+        setExitBuildingRequest(Date.now());
+      }
+      if (kind === 'police') {
+        setTimeout(() => {
+          setSpawnVehicleRequest({ id: 'veh-police', timestamp: Date.now() });
+        }, 280);
+      }
 
       if (kind === 'delivery') {
         setActiveMission({
@@ -472,7 +495,6 @@ export default function LagosLifeGamePage() {
           'warning'
         );
       } else if (kind === 'developer') {
-        const yaba = DISTRICTS.find((d) => d.id === 'yaba')!;
         setActiveMission({
           jobKind: 'developer',
           title: 'Cloud & Field Server Dev',
@@ -545,7 +567,7 @@ export default function LagosLifeGamePage() {
         );
       }
     },
-    [addNotification, pickRandomAddress, worldState.x, worldState.z]
+    [addNotification, pickRandomAddress, player.activeCity, worldState.insideBuilding, worldState.x, worldState.z]
   );
 
   const handleMissionReached = useCallback(() => {
@@ -1292,28 +1314,227 @@ export default function LagosLifeGamePage() {
   // Commercial Flight Handler (Lagos LOS ⇄ Abuja ABV)
   const handleFlyToCity = useCallback(
     (targetCity: CityId, airlineName: string) => {
-      const destLabel = targetCity === 'abuja' ? 'Abuja (Nnamdi Azikiwe Int’l ABV)' : 'Lagos (Murtala Muhammed Int’l LOS)';
-      runActionBar(`BOARDING ${airlineName.toUpperCase()} FLIGHT TO ${targetCity.toUpperCase()}...`, 1600, () => {
-        audioEngine.playUpNepa();
-        setPlayer((p) => ({ ...p, activeCity: targetCity }));
-        setTeleportRequest({ x: -68, z: 53, ts: Date.now() });
-        setWaypoint(null);
-        pushChat('system', 'FAAN ATC', `${player.name} landed at ${destLabel} via ${airlineName}.`);
-        addNotification('Flight Landed ✈️', `Welcome to ${destLabel}!`, 'success');
-      });
+      const destLabel =
+        targetCity === 'abuja'
+          ? 'Abuja (Nnamdi Azikiwe Int’l ABV)'
+          : 'Lagos (Murtala Muhammed Int’l LOS)';
+      runActionBar(
+        `BOARDING ${airlineName.toUpperCase()} FLIGHT TO ${targetCity.toUpperCase()}...`,
+        1600,
+        () => {
+          audioEngine.playUpNepa();
+          setPlayer((p) => ({ ...p, activeCity: targetCity }));
+          setWaypoint(null);
+          setTimeout(() => {
+            setEnterBuildingRequest({ id: 'airport', ts: Date.now() });
+          }, 40);
+          pushChat('system', 'FAAN ATC', `${player.name} landed at ${destLabel} via ${airlineName}.`);
+          addNotification(
+            'Flight Landed ✈️',
+            `Welcome to ${destLabel}! Step out the Arrival Doors to explore the city.`,
+            'success'
+          );
+        }
+      );
     },
     [addNotification, player.name, pushChat, runActionBar]
   );
 
-  // Interact with 3D Landmarks, Enterable Buildings, ATMs, Pedestrians & Services
+  // Interact with 3D Landmarks, Enterable 3D Buildings, 3D Furniture Stations, ATMs, Pedestrians & Services
   const handleInteract = useCallback(
     (locationId: string) => {
       audioEngine.playClick();
 
-      if (locationId === 'bennys') {
+      // 1. Entering or Exiting a Walkable 3D Building Interior (from HUD button or keyboard)
+      if (locationId.startsWith('enter:')) {
+        const distId = locationId.slice(6) as LagosDistrict;
+        setEnterBuildingRequest({ id: distId, ts: Date.now() });
+        return;
+      }
+      if (locationId === 'int:exit') {
+        setExitBuildingRequest(Date.now());
+        return;
+      }
+
+      // 2. HOME 3D INTERIOR STATIONS
+      if (locationId === 'int:home_bed') {
+        runActionBar('SLEEPING IN KING-SIZE MASTER BED...', 1300, () => {
+          audioEngine.playUpNepa();
+          setVitals((v) => ({
+            ...v,
+            energy: 100,
+            health: 100,
+            stress: Math.max(0, v.stress - 45),
+          }));
+          setMeText({ text: '* wakes up refreshed *', ts: Date.now() });
+          addNotification(
+            'Well Rested 🛏️',
+            '100% Energy & Health restored in your Master Suite!',
+            'success'
+          );
+        });
+        return;
+      }
+      if (locationId === 'int:home_fridge') {
+        runActionBar('PREPARING FRESH HOME MEAL...', 1100, () => {
+          audioEngine.playEatFood();
+          setVitals((v) => ({
+            ...v,
+            hunger: Math.min(100, v.hunger + 65),
+            thirst: Math.min(100, v.thirst + 65),
+            energy: Math.min(100, v.energy + 25),
+            stress: Math.max(0, v.stress - 15),
+          }));
+          setMeText({ text: '* enjoys a hot meal *', ts: Date.now() });
+          addNotification(
+            'Home Kitchen 🍽️',
+            'Replenished +65 Hunger, +65 Thirst & +25 Stamina!',
+            'success'
+          );
+        });
+        return;
+      }
+      if (locationId === 'int:home_wardrobe' || locationId === 'int:clothing_rack') {
+        setIsCustomizerOpen(true);
+        return;
+      }
+      if (
+        locationId === 'int:home_laptop' ||
+        locationId === 'int:home_solar' ||
+        locationId === 'int:home_safe'
+      ) {
+        openBuildingModal('home', locationId.slice(9));
+        return;
+      }
+
+      // 3. COMPUTER VILLAGE / BANEX TECH STORE 3D STATIONS
+      if (locationId === 'int:cv_ios') {
+        openBuildingModal('computervillage', 'ios');
+        return;
+      }
+      if (locationId === 'int:cv_android') {
+        openBuildingModal('computervillage', 'android');
+        return;
+      }
+      if (locationId === 'int:cv_laptops') {
+        openBuildingModal('computervillage', 'laptops');
+        return;
+      }
+      if (locationId === 'int:cv_counter') {
+        openBuildingModal('computervillage', 'phones');
+        return;
+      }
+
+      // 4. SHOPPING MALL 3D STATIONS
+      if (locationId === 'int:mall_grocery') {
+        openBuildingModal('lekki', 'groceries');
+        return;
+      }
+      if (locationId === 'int:mall_solar') {
+        openBuildingModal('lekki', 'solar');
+        return;
+      }
+      if (locationId === 'int:mall_luxury') {
+        openBuildingModal('lekki', 'luxury');
+        return;
+      }
+      if (locationId === 'int:mall_realestate') {
+        openBuildingModal('lekki', 'realestate');
+        return;
+      }
+
+      // 5. BANK BRANCH 3D STATIONS
+      if (locationId === 'int:bank_teller' || locationId === 'int:bank_desk') {
+        openBuildingModal('fleeca');
+        return;
+      }
+      if (locationId === 'int:bank_vault') {
+        setIsHeistOpen(true);
+        return;
+      }
+
+      // 6. AIRPORT TERMINAL 3D STATIONS
+      if (locationId === 'int:airport_checkin' || locationId === 'int:airport_gate') {
+        openBuildingModal('airport');
+        return;
+      }
+
+      // 7. POLICE & SECURITY HQ 3D STATIONS
+      if (locationId === 'int:pd_desk') {
+        openBuildingModal('mrpd');
+        return;
+      }
+      if (locationId === 'int:pd_armory') {
+        runActionBar('EQUIPPING CLASS-IV KEVLAR & DUTY MEDKIT...', 1100, () => {
+          audioEngine.playSeatbeltChime();
+          setVitals((v) => ({
+            ...v,
+            armor: 100,
+            health: 100,
+            stress: Math.max(0, v.stress - 20),
+          }));
+          addNotification(
+            'Tactical Armory 🛡️',
+            '100% Kevlar Armor & 100% Health equipped!',
+            'success'
+          );
+        });
+        return;
+      }
+
+      // 8. TECH HUB CAMPUS 3D STATIONS
+      if (locationId === 'int:yaba_code') {
+        setIsTechBroOpen(true);
+        return;
+      }
+      if (locationId === 'int:yaba_servers') {
+        openBuildingModal('yaba');
+        return;
+      }
+
+      // 9. NNPC MEGA STATION, NEPA & BENNY'S 3D STATIONS
+      if (locationId === 'int:gas_energy') {
+        openBuildingModal('gas');
+        return;
+      }
+      if (locationId === 'int:gas_bennys' || locationId === 'bennys') {
         setIsBennysOpen(true);
         return;
       }
+
+      // 10. AMALA CANTEEN, HOSPITAL, QUILOX & LAGOON PIER 3D STATIONS
+      if (locationId === 'int:amala_counter') {
+        setIsAmalaOpen(true);
+        return;
+      }
+      if (locationId === 'int:hosp_heal') {
+        runActionBar('RECEIVING CHIEF SURGEON TRAUMA CHECKUP...', 1300, () => {
+          const fee = player.cash >= 2500 ? 2500 : 0;
+          audioEngine.playUpNepa();
+          if (fee > 0) setPlayer((p) => ({ ...p, cash: p.cash - fee }));
+          setVitals((v) => ({ ...v, health: 100, stress: Math.max(0, v.stress - 35) }));
+          addNotification(
+            'Trauma Center Discharged 🏥',
+            `100% Health restored${fee ? ' (-₦2,500 co-pay)' : ''}!`,
+            'success'
+          );
+        });
+        return;
+      }
+      if (locationId === 'int:hosp_ems') {
+        handleStartMission('ems');
+        return;
+      }
+      if (locationId === 'int:quilox_vip') {
+        setIsQuiloxOpen(true);
+        return;
+      }
+      if (locationId === 'int:lagoon_dispatch') {
+        setIsDanfoOpen(true);
+        return;
+      }
+
+      // 11. OUTDOOR INTERACTIONS (Pedestrians, ATMs, or Direct District Entry)
       if (locationId.startsWith('ped:')) {
         const pedLabel = worldState.nearInteractable?.name || 'Street Citizen';
         setActivePedName(pedLabel);
@@ -1324,54 +1545,33 @@ export default function LagosLifeGamePage() {
         addNotification('Fleeca ATM', 'Connected to Checking Account on your phone.', 'info');
         return;
       }
-      // Enterable Buildings with rich interiors (Home, Airport, Computer Village, Mall, Bank, Gas/NEPA/Solar, Police/Security HQ, Tech Hub)
-      if (
-        locationId === 'home' ||
-        locationId === 'airport' ||
-        locationId === 'computervillage' ||
-        locationId === 'lekki' ||
-        locationId === 'fleeca' ||
-        locationId === 'gas' ||
-        locationId === 'mrpd' ||
-        locationId === 'yaba'
-      ) {
-        setActiveBuildingId(locationId as LagosDistrict);
+
+      const validDistricts: LagosDistrict[] = [
+        'home',
+        'airport',
+        'computervillage',
+        'lekki',
+        'fleeca',
+        'gas',
+        'mrpd',
+        'yaba',
+        'shitta',
+        'pillbox',
+        'clothing',
+        'quilox',
+        'lagoon',
+      ];
+      if (validDistricts.includes(locationId as LagosDistrict)) {
+        setEnterBuildingRequest({ id: locationId as LagosDistrict, ts: Date.now() });
         return;
       }
-      if (locationId === 'shitta') {
-        setIsAmalaOpen(true);
-        return;
-      }
-      if (locationId === 'pillbox') {
-        runActionBar('CHECKING IN WITH NANCY AT PILLBOX MEDICAL...', 1400, () => {
-          const fee = player.cash >= 2500 ? 2500 : 0;
-          audioEngine.playUpNepa();
-          if (fee > 0) setPlayer((p) => ({ ...p, cash: p.cash - fee }));
-          setVitals((v) => ({ ...v, health: 100, stress: Math.max(0, v.stress - 30) }));
-          addNotification(
-            'Discharged from Pillbox',
-            `100% Health restored${fee ? ' (-₦2,500 co-pay)' : ''}!`,
-            'success'
-          );
-        });
-        return;
-      }
-      if (locationId === 'clothing') {
-        setIsCustomizerOpen(true);
-        return;
-      }
-      if (locationId === 'quilox') {
-        setIsQuiloxOpen(true);
-        return;
-      }
-      if (locationId === 'lagoon') {
-        setIsDanfoOpen(true);
-        return;
-      }
+
       setIsPhoneOpen(true);
     },
     [
       addNotification,
+      handleStartMission,
+      openBuildingModal,
       player.cash,
       runActionBar,
       worldState.nearInteractable?.name,
@@ -1522,6 +1722,8 @@ export default function LagosLifeGamePage() {
         teleportRequest={teleportRequest}
         spawnVehicleRequest={spawnVehicleRequest}
         vehicleControlTrigger={vehicleControlTrigger}
+        enterBuildingRequest={enterBuildingRequest}
+        exitBuildingRequest={exitBuildingRequest}
         tuneVehicleRequest={tuneVehicleRequest}
         meText={meText}
         onInteract={handleInteract}
@@ -1603,13 +1805,15 @@ export default function LagosLifeGamePage() {
         }}
         onOpenHome={() => {
           audioEngine.playClick();
-          setTeleportRequest({ x: 68, z: 53, ts: Date.now() });
-          setActiveBuildingId('home');
+          setEnterBuildingRequest({ id: 'home', ts: Date.now() });
         }}
         onOpenAirport={() => {
           audioEngine.playClick();
-          setTeleportRequest({ x: -68, z: 53, ts: Date.now() });
-          setActiveBuildingId('airport');
+          setEnterBuildingRequest({ id: 'airport', ts: Date.now() });
+        }}
+        onExitBuilding={() => {
+          audioEngine.playClick();
+          setExitBuildingRequest(Date.now());
         }}
         onStopMission={() => {
           setActiveMission(null);
@@ -1770,7 +1974,10 @@ export default function LagosLifeGamePage() {
         onSetTimeOfDay={setTimeOfDay}
         onAddNotification={addNotification}
         onFlyToCity={handleFlyToCity}
-        onEnterBuilding={(bId) => setActiveBuildingId(bId)}
+        onEnterBuilding={(bId) => {
+          setIsPhoneOpen(false);
+          setEnterBuildingRequest({ id: bId, ts: Date.now() });
+        }}
       />
 
       {/* Server Scoreboard & Fast-Spawn Modal [U] */}
@@ -2103,13 +2310,21 @@ export default function LagosLifeGamePage() {
           addNotification('Fast Travel', `Arrived at ${label}.`, 'info');
         }}
         onFlyToCity={handleFlyToCity}
-        onEnterBuilding={(bId) => setActiveBuildingId(bId)}
+        onEnterBuilding={(bId) => {
+          setIsMapOpen(false);
+          setEnterBuildingRequest({ id: bId, ts: Date.now() });
+        }}
       />
 
-      {/* Interactive Enterable Building Interiors (Home, Mall, Computer Village, Bank, Airport, Gas/Solar, Police/Security HQ, Tech Hub) */}
+      {/* Interactive Building Station Terminal UI (Opened from 3D Interior Furniture Stations) */}
       <BuildingInteriorModal
         buildingId={activeBuildingId}
-        onClose={() => setActiveBuildingId(null)}
+        initialSection={buildingModalSection}
+        onClose={() => {
+          setActiveBuildingId(null);
+          setBuildingModalSection(undefined);
+        }}
+        onStepOutside={() => setExitBuildingRequest(Date.now())}
         player={player}
         vitals={vitals}
         isNepaActive={isNepaActive}

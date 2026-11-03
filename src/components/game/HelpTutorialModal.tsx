@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { X, Gamepad2, Smartphone, Car, MessageSquare, Briefcase } from 'lucide-react';
+import { X, Gamepad2, Smartphone, Car, MessageSquare, Briefcase, Home } from 'lucide-react';
 
 interface HelpTutorialModalProps {
   isOpen: boolean;
@@ -44,22 +44,31 @@ export const HelpTutorialModal: React.FC<HelpTutorialModalProps> = ({ isOpen, on
             <div><strong className="text-teal-400">[W/A/S/D]</strong> Move / Drive</div>
             <div><strong className="text-teal-400">[SHIFT]</strong> Sprint</div>
             <div><strong className="text-teal-400">[SPACE]</strong> Jump / Drift</div>
-            <div><strong className="text-teal-400">[E]</strong> Talk / Tuning / ATM</div>
+            <div><strong className="text-teal-400">[E]</strong> Enter 3D Doors</div>
+            <div><strong className="text-teal-400">[BACKSPACE]</strong> Exit Building</div>
             <div><strong className="text-teal-400">[F]</strong> Enter/Exit Car</div>
-            <div><strong className="text-teal-400">[M]</strong> Smartphone</div>
-            <div><strong className="text-teal-400">[N]</strong> Full City Map</div>
-            <div><strong className="text-teal-400">[F1]</strong> Action & Emotes</div>
-            <div><strong className="text-teal-400">[TAB]</strong> Pockets & Shop</div>
-            <div><strong className="text-teal-400">[T / U]</strong> Chat / Roster</div>
+            <div><strong className="text-teal-400">[M]</strong> iOS / Android Phone</div>
+            <div><strong className="text-teal-400">[N]</strong> Lagos / Abuja Map</div>
+            <div><strong className="text-teal-400">[F1]</strong> Action &amp; Emotes</div>
+            <div><strong className="text-teal-400">[TAB]</strong> Pockets &amp; Shop</div>
             <div><strong className="text-teal-400">[V / B]</strong> Camera / Belt</div>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-zinc-900/80 border border-white/8 space-y-1">
+          <div className="p-3.5 rounded-2xl bg-teal-950/35 border border-teal-400/35 space-y-1">
             <h4 className="font-bold text-xs text-teal-300 flex items-center gap-2">
-              <Briefcase size={15} /> 1. Unlimited 3D City Jobs, Street Racing & Heists
+              <Home size={15} /> 1. Walkable 3D Building Interiors (MLO Rooms) &amp; Home Solar
             </h4>
             <p className="text-[11px] leading-relaxed">
-              Open your phone with <strong>[M] → Job Center</strong> to clock into real 3D world loops: <strong>ChopChop Delivery</strong>, <strong>Downtown Cab Driver</strong>, <strong>Benny&apos;s Roadside Mechanic</strong>, <strong>Eko PD Patrol</strong>, <strong>Pillbox EMS Paramedic</strong>, <strong>Midnight Street Circuit Racing</strong>, or the <strong>Fleeca Bank Vault Heist</strong>! Press <strong>[N]</strong> anytime to open the full interactive satellite city map.
+              Walk or pull up to <strong>any building’s glowing glass doors</strong> (Your House, Computer Village, Palms Mall, Bank HQ, FAAN Airport, Police HQ, Tech Campus, Hospital, Quilox, Amala Shitta) and press <strong>[E]</strong> to step inside a <strong>fully furnished 3D interior room</strong>! Walk up to 3D beds, laptops, Apple/Android display tables, solar panels, or bank vaults and press <strong>[E]</strong>. Walk to the exit door or press <strong>[Backspace]</strong> to step back outside.
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-zinc-900/80 border border-white/8 space-y-1">
+            <h4 className="font-bold text-xs text-amber-300 flex items-center gap-2">
+              <Briefcase size={15} /> 2. 10 Real-Life Careers &amp; Lagos ⇄ Abuja Flights
+            </h4>
+            <p className="text-[11px] leading-relaxed">
+              Work as a <strong>Software Developer</strong>, <strong>Corporate Banker</strong>, <strong>Chief Security Guard</strong>, <strong>Police Officer</strong>, <strong>911 Paramedic</strong>, <strong>Cab Driver</strong>, <strong>Mechanic</strong>, or <strong>Delivery Rider</strong>! Book flights on your phone (<strong>[M] → Fly Air</strong>) or inside the 3D <strong>FAAN Airport Terminal</strong> to fly between <strong>Lagos (LOS)</strong> and <strong>Abuja (ABV)</strong>.
             </p>
           </div>
 

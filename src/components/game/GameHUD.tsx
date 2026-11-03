@@ -17,6 +17,7 @@ import {
   Map,
   Home,
   Plane,
+  DoorOpen,
 } from 'lucide-react';
 import {
   PlayerStats,
@@ -66,6 +67,7 @@ interface GameHUDProps {
   onOpenHelp: () => void;
   onOpenHome?: () => void;
   onOpenAirport?: () => void;
+  onExitBuilding?: () => void;
   onStopMission: () => void;
   onCancelEmote: () => void;
   onUseHotbarItem: (item: InventoryItem) => void;
@@ -108,6 +110,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onOpenHelp,
   onOpenHome,
   onOpenAirport,
+  onExitBuilding,
   onStopMission,
   onCancelEmote,
   onUseHotbarItem,
@@ -222,8 +225,33 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         </div>
 
-        {/* TOP-CENTER: Active Mission Objective Pill OR Active Emote Pill */}
-        <div className="hidden md:flex flex-col items-center gap-1.5 max-w-md">
+        {/* TOP-CENTER: 3D Building Interior Banner, Active Mission Objective Pill OR Active Emote Pill */}
+        <div className="flex flex-col items-center gap-1.5 max-w-lg">
+          {worldState.insideBuilding && (
+            <div className="pointer-events-auto bg-[#090d16]/92 backdrop-blur-xl border border-teal-400/55 rounded-2xl px-4 py-2 shadow-[0_12px_40px_rgba(20,184,166,0.25)] flex items-center gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-black uppercase tracking-widest text-teal-300">
+                    3D INTERIOR • WALK &amp; PRESS [E] AT STATIONS
+                  </span>
+                </div>
+                <p className="text-xs font-extrabold text-white truncate max-w-[240px] sm:max-w-[300px]">
+                  {worldState.insideTitle || 'Building Interior'}
+                </p>
+              </div>
+              {onExitBuilding && (
+                <button
+                  onClick={onExitBuilding}
+                  className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-[11px] flex items-center gap-1.5 shrink-0 transition-colors shadow-lg"
+                  title="Exit 3D Building Interior to City Street [Backspace]"
+                >
+                  <DoorOpen size={14} />
+                  <span>Step Outside</span>
+                </button>
+              )}
+            </div>
+          )}
+
           {activeMission && (
             <div className="pointer-events-auto bg-[#090d16]/90 backdrop-blur-xl border border-amber-400/45 rounded-2xl px-4 py-2 shadow-2xl flex items-center gap-3">
               <div className="w-8 h-8 rounded-xl bg-amber-400/15 border border-amber-400/40 flex items-center justify-center text-amber-300">

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Home,
@@ -39,7 +39,9 @@ import { audioEngine } from '@/lib/audioEngine';
 
 interface BuildingInteriorModalProps {
   buildingId: LagosDistrict | null;
+  initialSection?: string;
   onClose: () => void;
+  onStepOutside?: () => void;
   player: PlayerStats;
   vitals: Vitals;
   isNepaActive: boolean;
@@ -96,7 +98,9 @@ const BANK_CASES = [
 
 export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
   buildingId,
+  initialSection,
   onClose,
+  onStepOutside,
   player,
   vitals,
   isNepaActive,
@@ -112,8 +116,35 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
   onFlyToCity,
 }) => {
   const [techTab, setTechTab] = useState<'phones' | 'laptops' | 'os_compare'>('phones');
+  const [phoneOsFilter, setPhoneOsFilter] = useState<'all' | 'ios' | 'android'>('all');
   const [mallTab, setMallTab] = useState<'groceries' | 'solar' | 'luxury' | 'realestate'>('groceries');
   const [bankCaseIdx, setBankCaseIdx] = useState<number>(0);
+
+  useEffect(() => {
+    if (!initialSection) {
+      setPhoneOsFilter('all');
+      return;
+    }
+    if (initialSection === 'ios') {
+      setTechTab('phones');
+      setPhoneOsFilter('ios');
+    } else if (initialSection === 'android') {
+      setTechTab('phones');
+      setPhoneOsFilter('android');
+    } else if (initialSection === 'laptops') {
+      setTechTab('laptops');
+    } else if (initialSection === 'phones') {
+      setTechTab('phones');
+      setPhoneOsFilter('all');
+    } else if (
+      initialSection === 'groceries' ||
+      initialSection === 'solar' ||
+      initialSection === 'luxury' ||
+      initialSection === 'realestate'
+    ) {
+      setMallTab(initialSection);
+    }
+  }, [initialSection, buildingId]);
 
   if (!buildingId) return null;
 
@@ -192,12 +223,25 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
               </div>
             </div>
 
-            <button
-              onClick={onClose}
-              className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-rose-600 text-xs font-bold text-zinc-200 hover:text-white flex items-center gap-1.5 transition-colors"
-            >
-              <X size={14} /> Exit to Street
-            </button>
+            <div className="flex items-center gap-2">
+              {onStepOutside && (
+                <button
+                  onClick={() => {
+                    onClose();
+                    onStepOutside();
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-rose-950/80 hover:bg-rose-600 border border-rose-500/40 text-xs font-bold text-rose-200 hover:text-white transition-colors"
+                >
+                  🚪 Step Outside
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-teal-500 text-xs font-bold text-zinc-200 hover:text-black flex items-center gap-1.5 transition-colors"
+              >
+                <X size={14} /> Back to 3D Room
+              </button>
+            </div>
           </div>
 
           <div className="p-5 overflow-y-auto space-y-4">
@@ -610,28 +654,57 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
             </div>
             <button
               onClick={onClose}
-              className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-rose-600 text-xs font-bold text-zinc-200 hover:text-white flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-teal-500 text-xs font-bold text-zinc-200 hover:text-black flex items-center gap-1.5"
             >
-              <X size={14} /> Exit Store
+              <X size={14} /> Back to 3D Store
             </button>
           </div>
 
           {/* Navigation Tabs */}
           <div className="px-6 pt-3 pb-2 bg-zinc-900/60 border-b border-white/8 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-1.5">
               <button
-                onClick={() => setTechTab('phones')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all ${
-                  techTab === 'phones'
+                onClick={() => {
+                  setTechTab('phones');
+                  setPhoneOsFilter('all');
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
+                  techTab === 'phones' && phoneOsFilter === 'all'
                     ? 'bg-orange-500 text-black'
                     : 'bg-zinc-800 text-zinc-300 hover:text-white'
                 }`}
               >
-                📱 Smartphones (iOS & Android)
+                📱 All Phones
+              </button>
+              <button
+                onClick={() => {
+                  setTechTab('phones');
+                  setPhoneOsFilter('ios');
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
+                  techTab === 'phones' && phoneOsFilter === 'ios'
+                    ? 'bg-sky-400 text-black'
+                    : 'bg-zinc-800 text-sky-300 hover:text-white'
+                }`}
+              >
+                 Apple iOS
+              </button>
+              <button
+                onClick={() => {
+                  setTechTab('phones');
+                  setPhoneOsFilter('android');
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
+                  techTab === 'phones' && phoneOsFilter === 'android'
+                    ? 'bg-emerald-400 text-black'
+                    : 'bg-zinc-800 text-emerald-300 hover:text-white'
+                }`}
+              >
+                🤖 Android OS
               </button>
               <button
                 onClick={() => setTechTab('laptops')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
                   techTab === 'laptops'
                     ? 'bg-indigo-500 text-white'
                     : 'bg-zinc-800 text-zinc-300 hover:text-white'
@@ -644,9 +717,9 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
                   onClose();
                   onOpenInventory();
                 }}
-                className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-teal-300"
+                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-teal-300"
               >
-                🧰 24/7 Tactical & Gadgets
+                🧰 24/7 Gadgets
               </button>
             </div>
 
@@ -658,7 +731,9 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
           <div className="p-5 overflow-y-auto space-y-4">
             {techTab === 'phones' && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {PHONE_MODELS_CATALOG.map((phone) => {
+                {PHONE_MODELS_CATALOG.filter(
+                  (ph) => phoneOsFilter === 'all' || ph.os === phoneOsFilter
+                ).map((phone) => {
                   const isOwned = ownedPhones.includes(phone.id);
                   const isEquipped = player.phoneModelId === phone.id;
                   return (
@@ -859,9 +934,9 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
             </div>
             <button
               onClick={onClose}
-              className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-rose-600 text-xs font-bold text-zinc-200 hover:text-white flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-teal-500 text-xs font-bold text-zinc-200 hover:text-black flex items-center gap-1.5"
             >
-              <X size={14} /> Exit Mall
+              <X size={14} /> Back to 3D Mall
             </button>
           </div>
 
@@ -1225,9 +1300,9 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
             </div>
             <button
               onClick={onClose}
-              className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-rose-600 text-xs font-bold text-zinc-200 hover:text-white flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-teal-500 text-xs font-bold text-zinc-200 hover:text-black flex items-center gap-1.5"
             >
-              <X size={14} /> Exit Bank
+              <X size={14} /> Back to 3D Bank
             </button>
           </div>
 
@@ -1388,9 +1463,9 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
             </div>
             <button
               onClick={onClose}
-              className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-rose-600 text-xs font-bold text-zinc-200 hover:text-white flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-teal-500 text-xs font-bold text-zinc-200 hover:text-black flex items-center gap-1.5"
             >
-              <X size={14} /> Exit Terminal
+              <X size={14} /> Back to 3D Terminal
             </button>
           </div>
 

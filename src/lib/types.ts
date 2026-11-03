@@ -106,6 +106,8 @@ export interface WorldRealtimeState {
   vehicle: VehicleTelemetry;
   police: { x: number; z: number }[];
   missionDistance: number | null;
+  insideBuilding?: LagosDistrict | null;
+  insideTitle?: string;
 }
 
 export interface ChatMessage {
