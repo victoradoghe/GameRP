@@ -77,6 +77,7 @@ interface GameHUDProps {
   onInteractPromptClick: () => void;
   onVehicleAction: (action: 'enter_exit' | 'seatbelt' | 'lights' | 'siren') => void;
   onOpenItemWheel?: () => void;
+  onOpenSettings?: () => void;
   graphicsSettings?: GraphicsSettings;
   onChangeGraphics?: (g: GraphicsSettings) => void;
 }
@@ -123,6 +124,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onInteractPromptClick,
   onVehicleAction,
   onOpenItemWheel,
+  onOpenSettings,
   graphicsSettings,
   onChangeGraphics,
 }) => {
@@ -484,6 +486,18 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   </div>
                 )}
               </div>
+            )}
+
+            {onOpenSettings && (
+              <button
+                onClick={onOpenSettings}
+                className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-md"
+                title="Open GTA Settings & Resolution [ESC]"
+              >
+                <Settings size={13} className="text-zinc-200" />
+                <span className="font-mono text-[10px] text-zinc-300">Settings</span>
+                <span className="font-mono text-[9px] px-1 py-0.2 rounded bg-black/50 text-zinc-400">[ESC]</span>
+              </button>
             )}
 
             {onOpenHome && (

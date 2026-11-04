@@ -20,6 +20,7 @@ import { NoPixelCityMapModal } from '@/components/game/NoPixelCityMapModal';
 import { BennysCustomsModal } from '@/components/game/BennysCustomsModal';
 import { PedInteractionModal } from '@/components/game/PedInteractionModal';
 import { BuildingInteriorModal } from '@/components/game/BuildingInteriorModal';
+import { GameSettingsMenu, FpsCounter } from '@/components/game/GameSettingsMenu';
 import {
   PlayerStats,
   Vitals,
@@ -206,7 +207,19 @@ export default function LagosLifeGamePage() {
     resolutionScale: 1.0,
     bloomEnabled: true,
     shadowsEnabled: true,
+    fov: 60,
+    mouseSensitivity: 1.0,
+    invertY: false,
+    brightness: 1.0,
   });
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [showFps, setShowFps] = useState<boolean>(false);
+  const [hudVisible, setHudVisible] = useState<boolean>(true);
+  const [masterVolume, setMasterVolume] = useState<number>(85);
+  const [musicVolume, setMusicVolume] = useState<number>(75);
+  const [isLoggedOut, setIsLoggedOut] = useState<boolean>(false);
+  const [sessionStartedAt] = useState<number>(() => Date.now());
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [vaultCamsDisabled, setVaultCamsDisabled] = useState<
     Partial<Record<BankVaultSpec['id'], boolean>>
   >({});
@@ -222,6 +235,8 @@ export default function LagosLifeGamePage() {
   const isDowned = vitals.health <= 0;
 
   const anyBlockingModal =
+    isSettingsOpen ||
+    isLoggedOut ||
     isInventoryOpen ||
     isItemWheelOpen ||
     isRadialOpen ||
@@ -315,6 +330,51 @@ export default function LagosLifeGamePage() {
       console.warn('LocalStorage write error:', e);
     }
   }, [player, vitals]);
+
+  // Audio volume & Pause / Settings handlers
+  const handleMasterVolumeChange = useCallback((vol: number) => {
+    setMasterVolume(vol);
+    audioEngine.setMasterVolume(vol);
+  }, []);
+
+  const handleMusicVolumeChange = useCallback((vol: number) => {
+    setMusicVolume(vol);
+    audioEngine.setMusicVolume(vol);
+  }, []);
+
+  const handleSaveGame = useCallback(() => {
+    try {
+      localStorage.setItem('lagos_life_3d_player_v5', JSON.stringify(player));
+      localStorage.setItem('lagos_life_3d_vitals_v5', JSON.stringify(vitals));
+      setLastSavedAt(Date.now());
+      audioEngine.playCashEarn();
+      addNotification('Game Saved', 'Character status, inventory & bank balance saved.', 'success');
+    } catch {
+      addNotification('Save Warning', 'Local browser storage could not be updated.', 'warning');
+    }
+  }, [player, vitals, addNotification]);
+
+  const handleLogout = useCallback(() => {
+    setIsSettingsOpen(false);
+    setIsLoggedOut(true);
+    audioEngine.playCameraClick();
+    addNotification('Logged Out', 'Returned to Main Story Title. Progress safely stored.', 'info');
+  }, [addNotification]);
+
+  const handleResetCharacter = useCallback(() => {
+    try {
+      localStorage.removeItem('lagos_life_3d_player_v5');
+      localStorage.removeItem('lagos_life_3d_vitals_v5');
+    } catch {}
+    setPlayer(INITIAL_LAPO_PLAYER);
+    setVitals(INITIAL_VITALS);
+    setWantedStars(0);
+    setEquippedItemId(null);
+    setLastSavedAt(Date.now());
+    setIsSettingsOpen(false);
+    audioEngine.playVehicleIgnition();
+    addNotification('Character Reset', 'New citizen identity spawned at Eko Central Hospital.', 'info');
+  }, [addNotification]);
 
   // Action Progress Bar helper
   const runActionBar = useCallback((label: string, durationMs: number, onDone: () => void) => {
@@ -1353,17 +1413,54 @@ export default function LagosLifeGamePage() {
       }
 
       if (e.key === 'Escape') {
-        setIsPhoneOpen(false);
-        setIsRadialOpen(false);
-        setIsItemWheelOpen(false);
-        setIsInventoryOpen(false);
-        setIsScoreboardOpen(false);
-        setIsHelpOpen(false);
-        setIsChatOpen(false);
-        setIsMapOpen(false);
-        setIsBennysOpen(false);
-        setActiveBuildingId(null);
-        setActivePedName(null);
+        if (isSettingsOpen) {
+          setIsSettingsOpen(false);
+          return;
+        }
+        const anyModalOpen =
+          isPhoneOpen ||
+          isRadialOpen ||
+          isItemWheelOpen ||
+          isInventoryOpen ||
+          isScoreboardOpen ||
+          isHelpOpen ||
+          isChatOpen ||
+          isMapOpen ||
+          isBennysOpen ||
+          activeBuildingId !== null ||
+          activePedName !== null ||
+          isCustomizerOpen ||
+          isDanfoOpen ||
+          isTechBroOpen ||
+          isAfrobeatsOpen ||
+          isAmalaOpen ||
+          isQuiloxOpen ||
+          isHeistOpen;
+
+        if (anyModalOpen) {
+          setIsPhoneOpen(false);
+          setIsRadialOpen(false);
+          setIsItemWheelOpen(false);
+          setIsInventoryOpen(false);
+          setIsScoreboardOpen(false);
+          setIsHelpOpen(false);
+          setIsChatOpen(false);
+          setIsMapOpen(false);
+          setIsBennysOpen(false);
+          setActiveBuildingId(null);
+          setActivePedName(null);
+          setIsCustomizerOpen(false);
+          setIsDanfoOpen(false);
+          setIsTechBroOpen(false);
+          setIsAfrobeatsOpen(false);
+          setIsAmalaOpen(false);
+          setIsQuiloxOpen(false);
+          setIsHeistOpen(false);
+          return;
+        }
+
+        audioEngine.playClick();
+        setIsSettingsOpen(true);
         return;
       }
 
@@ -1417,7 +1514,29 @@ export default function LagosLifeGamePage() {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [player.items, handleUseItem]);
+  }, [
+    player.items,
+    handleUseItem,
+    isSettingsOpen,
+    isPhoneOpen,
+    isRadialOpen,
+    isItemWheelOpen,
+    isInventoryOpen,
+    isScoreboardOpen,
+    isHelpOpen,
+    isChatOpen,
+    isMapOpen,
+    isBennysOpen,
+    activeBuildingId,
+    activePedName,
+    isCustomizerOpen,
+    isDanfoOpen,
+    isTechBroOpen,
+    isAfrobeatsOpen,
+    isAmalaOpen,
+    isQuiloxOpen,
+    isHeistOpen,
+  ]);
 
   // Smooth Continuous World Clock + Sprinting Stamina Loop (1Hz)
   useEffect(() => {
@@ -1934,102 +2053,111 @@ export default function LagosLifeGamePage() {
       />
 
       {/* Clean, Uncluttered NoPixel V HUD */}
-      <GameHUD
-        player={player}
-        vitals={vitals}
-        worldState={worldState}
-        wantedStars={wantedStars}
-        timeOfDay={timeOfDay}
-        weather={weather}
-        emote={emote}
-        activeMission={activeMission}
-        missionTarget={activeMission?.target ?? null}
-        waypoint={waypoint}
-        isPhoneOpen={isPhoneOpen}
-        isChatOpen={isChatOpen}
-        chatLines={chatLines}
-        voiceMode={voiceMode}
-        isRadioOn={isRadioOn}
-        isAudioMuted={isAudioMuted}
-        isPlayingMusic={isPlayingMusic}
-        onlineCount={SERVER_PLAYERS.length + 1}
-        onOpenChat={() => setIsChatOpen(true)}
-        onCloseChat={() => setIsChatOpen(false)}
-        onSubmitChat={handleSubmitChat}
-        onCycleVoiceMode={() => {
-          audioEngine.playRadioClick();
-          setVoiceMode((m) =>
-            m === 'whisper' ? 'normal' : m === 'normal' ? 'shout' : 'whisper'
-          );
-        }}
-        onToggleRadio={() => {
-          audioEngine.playRadioClick();
-          setIsRadioOn((r) => !r);
-        }}
-        onToggleMute={handleToggleMute}
-        onToggleMusic={handleToggleMusic}
-        onOpenPhone={() => {
-          audioEngine.playClick();
-          setIsPhoneOpen((o) => !o);
-        }}
-        onOpenInventory={() => {
-          audioEngine.playClick();
-          setIsInventoryOpen(true);
-        }}
-        onOpenRadial={() => {
-          audioEngine.playClick();
-          setIsRadialOpen(true);
-        }}
-        onOpenItemWheel={() => {
-          audioEngine.playClick();
-          setIsItemWheelOpen(true);
-        }}
-        graphicsSettings={graphicsSettings}
-        onChangeGraphics={setGraphicsSettings}
-        onOpenMap={() => {
-          audioEngine.playClick();
-          setIsMapOpen(true);
-        }}
-        onOpenScoreboard={() => {
-          audioEngine.playClick();
-          setIsScoreboardOpen(true);
-        }}
-        onOpenHelp={() => {
-          audioEngine.playClick();
-          setIsHelpOpen(true);
-        }}
-        onOpenHome={() => {
-          audioEngine.playClick();
-          setEnterBuildingRequest({ id: 'home', ts: Date.now() });
-        }}
-        onOpenAirport={() => {
-          audioEngine.playClick();
-          setEnterBuildingRequest({ id: 'airport', ts: Date.now() });
-        }}
-        onExitBuilding={() => {
-          audioEngine.playClick();
-          setExitBuildingRequest(Date.now());
-        }}
-        onStopMission={() => {
-          setActiveMission(null);
-          addNotification('Shift Ended', 'Clocked out of current job.', 'info');
-        }}
-        onCancelEmote={() => setEmote('none')}
-        onUseHotbarItem={handleUseItem}
-        onSetWaypoint={setWaypoint}
-        onInteractPromptClick={() => {
-          const near = worldState.nearInteractable;
-          if (!near) return;
-          if (near.id === 'refuel') {
-            handleRefuelRequest(100 - worldState.vehicle.fuel);
-          } else {
-            handleInteract(near.id);
+      {hudVisible && !isLoggedOut && (
+        <GameHUD
+          player={player}
+          vitals={vitals}
+          worldState={worldState}
+          wantedStars={wantedStars}
+          timeOfDay={timeOfDay}
+          weather={weather}
+          emote={emote}
+          activeMission={activeMission}
+          missionTarget={activeMission?.target ?? null}
+          waypoint={waypoint}
+          isPhoneOpen={isPhoneOpen}
+          isChatOpen={isChatOpen}
+          chatLines={chatLines}
+          voiceMode={voiceMode}
+          isRadioOn={isRadioOn}
+          isAudioMuted={isAudioMuted}
+          isPlayingMusic={isPlayingMusic}
+          onlineCount={SERVER_PLAYERS.length + 1}
+          onOpenChat={() => setIsChatOpen(true)}
+          onCloseChat={() => setIsChatOpen(false)}
+          onSubmitChat={handleSubmitChat}
+          onCycleVoiceMode={() => {
+            audioEngine.playRadioClick();
+            setVoiceMode((m) =>
+              m === 'whisper' ? 'normal' : m === 'normal' ? 'shout' : 'whisper'
+            );
+          }}
+          onToggleRadio={() => {
+            audioEngine.playRadioClick();
+            setIsRadioOn((r) => !r);
+          }}
+          onToggleMute={handleToggleMute}
+          onToggleMusic={handleToggleMusic}
+          onOpenPhone={() => {
+            audioEngine.playClick();
+            setIsPhoneOpen((o) => !o);
+          }}
+          onOpenInventory={() => {
+            audioEngine.playClick();
+            setIsInventoryOpen(true);
+          }}
+          onOpenRadial={() => {
+            audioEngine.playClick();
+            setIsRadialOpen(true);
+          }}
+          onOpenItemWheel={() => {
+            audioEngine.playClick();
+            setIsItemWheelOpen(true);
+          }}
+          onOpenSettings={() => {
+            audioEngine.playClick();
+            setIsSettingsOpen(true);
+          }}
+          graphicsSettings={graphicsSettings}
+          onChangeGraphics={setGraphicsSettings}
+          onOpenMap={() => {
+            audioEngine.playClick();
+            setIsMapOpen(true);
+          }}
+          onOpenScoreboard={() => {
+            audioEngine.playClick();
+            setIsScoreboardOpen(true);
+          }}
+          onOpenHelp={() => {
+            audioEngine.playClick();
+            setIsHelpOpen(true);
+          }}
+          onOpenHome={() => {
+            audioEngine.playClick();
+            setEnterBuildingRequest({ id: 'home', ts: Date.now() });
+          }}
+          onOpenAirport={() => {
+            audioEngine.playClick();
+            setEnterBuildingRequest({ id: 'airport', ts: Date.now() });
+          }}
+          onExitBuilding={() => {
+            audioEngine.playClick();
+            setExitBuildingRequest(Date.now());
+          }}
+          onStopMission={() => {
+            setActiveMission(null);
+            addNotification('Shift Ended', 'Clocked out of current job.', 'info');
+          }}
+          onCancelEmote={() => setEmote('none')}
+          onUseHotbarItem={handleUseItem}
+          onSetWaypoint={setWaypoint}
+          onInteractPromptClick={() => {
+            const near = worldState.nearInteractable;
+            if (!near) return;
+            if (near.id === 'refuel') {
+              handleRefuelRequest(100 - worldState.vehicle.fuel);
+            } else {
+              handleInteract(near.id);
+            }
+          }}
+          onVehicleAction={(action) =>
+            setVehicleControlTrigger({ action, timestamp: Date.now() })
           }
-        }}
-        onVehicleAction={(action) =>
-          setVehicleControlTrigger({ action, timestamp: Date.now() })
-        }
-      />
+        />
+      )}
+
+      {/* Real-time FPS & Resolution Performance Monitor */}
+      {showFps && !isLoggedOut && <FpsCounter />}
 
       {/* NoPixel Action Task Progress Bar */}
       {actionProgress && (
@@ -2615,6 +2743,250 @@ export default function LagosLifeGamePage() {
           }
         }}
       />
+
+      {/* GTA IV / GTA V Style Settings & Pause Menu */}
+      <GameSettingsMenu
+        isOpen={isSettingsOpen}
+        fromTitleScreen={isLoggedOut}
+        onResume={() => setIsSettingsOpen(false)}
+        player={player}
+        vitals={vitals}
+        timeOfDay={timeOfDay}
+        wantedStars={wantedStars}
+        sessionStartedAt={sessionStartedAt}
+        lastSavedAt={lastSavedAt}
+        graphicsSettings={graphicsSettings}
+        onChangeGraphics={setGraphicsSettings}
+        showFps={showFps}
+        onToggleShowFps={() => setShowFps((f) => !f)}
+        hudVisible={hudVisible}
+        onToggleHud={() => setHudVisible((h) => !h)}
+        isAudioMuted={isAudioMuted}
+        onToggleMute={handleToggleMute}
+        masterVolume={masterVolume}
+        onChangeMasterVolume={handleMasterVolumeChange}
+        musicVolume={musicVolume}
+        onChangeMusicVolume={handleMusicVolumeChange}
+        isPlayingMusic={isPlayingMusic}
+        onToggleMusic={handleToggleMusic}
+        isRadioOn={isRadioOn}
+        onToggleRadio={() => {
+          audioEngine.playRadioClick();
+          setIsRadioOn((r) => !r);
+        }}
+        cameraMode={cameraMode}
+        onChangeCameraMode={setCameraMode}
+        onSaveGame={handleSaveGame}
+        onLogout={handleLogout}
+        onResetCharacter={handleResetCharacter}
+        onOpenMap={() => {
+          setIsSettingsOpen(false);
+          setIsMapOpen(true);
+        }}
+        onOpenHelp={() => {
+          setIsSettingsOpen(false);
+          setIsHelpOpen(true);
+        }}
+        onOpenCustomizer={() => {
+          setIsSettingsOpen(false);
+          setIsCustomizerOpen(true);
+        }}
+      />
+
+      {/* GTA IV / GTA V Style Main Title Screen when Logged Out */}
+      {isLoggedOut && (
+        <div className="fixed inset-0 z-[120] bg-black/95 flex flex-col justify-between p-6 sm:p-12 select-none backdrop-blur-md animate-fade-in">
+          {/* Top Header / Branding */}
+          <div className="flex items-center justify-between border-b border-amber-500/30 pb-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center font-black text-black text-2xl shadow-xl shadow-amber-500/20">
+                IV
+              </div>
+              <div>
+                <h1 className="text-xl sm:text-2xl font-black uppercase tracking-[0.25em] text-white flex items-center gap-3">
+                  NoPixel <span className="text-amber-400">Grand Theft V</span>
+                  <span className="text-[10px] font-mono font-bold tracking-normal text-amber-300/90 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">
+                    Eko & Abuja Edition
+                  </span>
+                </h1>
+                <p className="text-[11px] text-zinc-400 font-mono tracking-wider mt-0.5">
+                  Three.js 3D Open World Roleplay • Lagos State & FCT Simulation
+                </p>
+              </div>
+            </div>
+
+            <div className="hidden sm:flex items-center gap-3 text-right">
+              <div>
+                <div className="text-[10px] font-mono uppercase text-zinc-500 font-bold">Online Status</div>
+                <div className="text-xs font-mono font-semibold text-emerald-400 flex items-center justify-end gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
+                  EKO-SERVER-01 (64 / 64)
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Central Menu & Character Profile */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 my-auto max-w-6xl w-full mx-auto items-center py-6">
+            <div className="lg:col-span-7 space-y-3">
+              <div className="text-xs font-mono uppercase tracking-[0.2em] text-amber-400/80 font-bold mb-2">
+                • Main Story & Session Menu
+              </div>
+
+              <button
+                onClick={() => {
+                  audioEngine.playVehicleIgnition();
+                  setIsLoggedOut(false);
+                }}
+                className="w-full text-left p-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black uppercase tracking-wider text-base sm:text-lg flex items-center justify-between transition-all transform hover:scale-[1.01] shadow-xl shadow-amber-500/20 group"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="w-8 h-8 rounded-lg bg-black/20 flex items-center justify-center font-mono text-sm font-bold">▶</span>
+                  <div>
+                    <div>Resume Story / Spawn In City</div>
+                    <div className="text-xs font-normal opacity-85 normal-case">Continue with {player.name} in {player.activeCity === 'abuja' ? 'Abuja Central' : 'Lagos Marina'}</div>
+                  </div>
+                </div>
+                <span className="text-xl group-hover:translate-x-1 transition-transform">→</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  audioEngine.playClick();
+                  setIsSettingsOpen(true);
+                }}
+                className="w-full text-left p-4 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 hover:border-amber-400/60 text-white font-bold uppercase tracking-wider text-sm sm:text-base flex items-center justify-between transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center font-mono text-amber-400 text-sm">⚙</span>
+                  <div>
+                    <div>Settings & Resolution Scaler</div>
+                    <div className="text-xs font-normal text-zinc-400 normal-case">Configure 50%–150% resolution, audio volume, keybinds</div>
+                  </div>
+                </div>
+                <span className="text-zinc-500 font-mono">GTA IV / V</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  audioEngine.playClick();
+                  setIsCustomizerOpen(true);
+                }}
+                className="w-full text-left p-4 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 hover:border-amber-400/60 text-white font-bold uppercase tracking-wider text-sm sm:text-base flex items-center justify-between transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center font-mono text-cyan-400 text-sm">👔</span>
+                  <div>
+                    <div>Suburban Clothing & Wardrobe</div>
+                    <div className="text-xs font-normal text-zinc-400 normal-case">Custom fit, sneakers, Agbada & accessories</div>
+                  </div>
+                </div>
+                <span className="text-zinc-500 font-mono">Wardrobe</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  audioEngine.playClick();
+                  setIsHelpOpen(true);
+                }}
+                className="w-full text-left p-4 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 hover:border-amber-400/60 text-white font-bold uppercase tracking-wider text-sm sm:text-base flex items-center justify-between transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center font-mono text-emerald-400 text-sm">📖</span>
+                  <div>
+                    <div>How to Play & Roleplay Guide</div>
+                    <div className="text-xs font-normal text-zinc-400 normal-case">Controls, flight simulator, jobs & mobile device guide</div>
+                  </div>
+                </div>
+                <span className="text-zinc-500 font-mono">Guide</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.confirm('Start a new character life? Current progress will be reset to default.')) {
+                    handleResetCharacter();
+                    setIsLoggedOut(false);
+                  }
+                }}
+                className="w-full text-left p-3.5 rounded-xl bg-red-950/40 hover:bg-red-900/40 border border-red-700/40 hover:border-red-500/70 text-red-200 font-semibold uppercase tracking-wider text-xs sm:text-sm flex items-center justify-between transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="w-8 h-8 rounded-lg bg-red-900/40 flex items-center justify-center font-mono text-red-300 text-sm">↺</span>
+                  <div>
+                    <div>Start New Citizen Life</div>
+                    <div className="text-[11px] text-red-400/80 normal-case">Reset character to newcomer citizen state</div>
+                  </div>
+                </div>
+                <span className="text-red-400 font-mono text-xs">Reset</span>
+              </button>
+            </div>
+
+            {/* Character Snapshot Card */}
+            <div className="lg:col-span-5 bg-gradient-to-b from-zinc-900/90 to-zinc-950/95 border border-amber-500/30 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-2xl pointer-events-none" />
+              <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-amber-400 font-bold mb-4">
+                Saved Citizen Profile
+              </div>
+
+              <div className="flex items-center gap-4 mb-5">
+                <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border-2 border-amber-400/50 flex items-center justify-center text-3xl shadow-inner">
+                  👤
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-white">{player.name}</h3>
+                  <div className="text-xs font-mono text-amber-300 uppercase tracking-wide">
+                    {player.job || 'Freelance Citizen'}
+                  </div>
+                  <div className="text-[11px] font-mono text-zinc-400 mt-0.5">
+                    ID: #{player.id || 'NIG-7734'} • {player.activeCity?.toUpperCase() || 'LAGOS'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-5">
+                <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800">
+                  <div className="text-[10px] font-mono uppercase text-zinc-500">Cash On Hand</div>
+                  <div className="text-base font-black text-emerald-400 font-mono">
+                    ₦{player.cash.toLocaleString()}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800">
+                  <div className="text-[10px] font-mono uppercase text-zinc-500">Fleeca Bank</div>
+                  <div className="text-base font-black text-cyan-400 font-mono">
+                    ₦{player.bankBalance.toLocaleString()}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800">
+                  <div className="text-[10px] font-mono uppercase text-zinc-500">Street Cred</div>
+                  <div className="text-base font-black text-purple-400 font-mono">
+                    {vitals.streetCred} / 100
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800">
+                  <div className="text-[10px] font-mono uppercase text-zinc-500">Wanted Level</div>
+                  <div className="text-base font-black text-amber-400 font-mono">
+                    {wantedStars > 0 ? `${wantedStars} ★` : 'Clean'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] font-mono text-amber-300">
+                💡 <span className="font-bold">Tip:</span> Use the Settings Menu to adjust Resolution Scale from 50% up to 150% to optimize FPS on your display.
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Bar */}
+          <div className="flex flex-col sm:flex-row items-center justify-between border-t border-zinc-800 pt-4 text-xs font-mono text-zinc-500 gap-2">
+            <div>GTA IV / V Pause System • Build 2026.11 • WebGL2 + Three.js Engine</div>
+            <div className="flex items-center gap-4">
+              <span>Resolution: {Math.round((graphicsSettings.resolutionScale || 1) * 100)}%</span>
+              <span>Audio: {isAudioMuted ? 'Muted' : `${masterVolume}%`}</span>
+              <span>FOV: {graphicsSettings.fov || 60}°</span>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

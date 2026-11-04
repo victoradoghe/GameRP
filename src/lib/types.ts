@@ -66,6 +66,10 @@ export interface GraphicsSettings {
   resolutionScale: number; // 0.5, 0.75, 1.0, 1.25, 1.5
   bloomEnabled: boolean;
   shadowsEnabled: boolean;
+  fov?: number; // base camera field of view (50 - 90)
+  mouseSensitivity?: number; // 0.25 - 2.5 multiplier
+  invertY?: boolean;
+  brightness?: number; // 0.6 - 1.5 exposure multiplier
 }
 
 export interface BankTransaction {

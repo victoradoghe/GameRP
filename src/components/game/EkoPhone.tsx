@@ -798,7 +798,7 @@ export const EkoPhone: React.FC<EkoPhoneProps> = ({
                     },
                     {
                       id: 'flights' as PhoneApp,
-                      label: 'Flights',
+                      label: 'Aero & Jets',
                       icon: <PlaneTakeoff size={20} />,
                       bg: 'bg-sky-500/25 text-sky-300 border-sky-400/35',
                     },
@@ -810,7 +810,7 @@ export const EkoPhone: React.FC<EkoPhoneProps> = ({
                     },
                     {
                       id: 'garage' as PhoneApp,
-                      label: 'Valet',
+                      label: 'Valet Fleet',
                       icon: <Car size={20} />,
                       bg: 'bg-pink-500/25 text-pink-300 border-pink-400/35',
                     },
@@ -822,7 +822,7 @@ export const EkoPhone: React.FC<EkoPhoneProps> = ({
                     },
                     {
                       id: 'twitter' as PhoneApp,
-                      label: 'Twatter',
+                      label: 'Twatter 𝕏',
                       icon: <MessageCircle size={20} />,
                       bg: 'bg-blue-500/25 text-blue-300 border-blue-400/35',
                     },
@@ -2424,14 +2424,29 @@ export const EkoPhone: React.FC<EkoPhoneProps> = ({
             <div className="flex flex-col flex-1 min-h-0 bg-black text-white -mx-3.5 -my-1 px-3.5 py-1">
               {xLoading ? (
                 /* Authentic Minimalist Pitch-Black 𝕏 Loading Screen (~900ms) */
-                <div className="flex-1 flex flex-col items-center justify-center space-y-4 animate-fade-in bg-black">
-                  <div className="text-5xl font-black text-white tracking-tighter select-none animate-pulse">
-                    𝕏
+                <div className="flex-1 flex flex-col items-center justify-between py-14 animate-fade-in bg-black select-none">
+                  <div className="h-4" />
+                  <div className="flex flex-col items-center gap-5">
+                    <div className="relative">
+                      <svg
+                        className="w-16 h-16 text-white fill-current animate-pulse drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                      </svg>
+                    </div>
+                    <div className="w-24 h-1 bg-zinc-900 rounded-full overflow-hidden">
+                      <div className="h-full bg-white rounded-full animate-pulse" style={{ width: '85%' }} />
+                    </div>
                   </div>
-                  <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                  <span className="text-[10px] font-mono text-zinc-500 tracking-wider">
-                    Connecting to 𝕏 City Network...
-                  </span>
+                  <div className="flex flex-col items-center text-center gap-1">
+                    <span className="text-[11px] font-mono font-bold tracking-widest text-zinc-300 uppercase">
+                      Twatter • 𝕏 Eko Feed
+                    </span>
+                    <span className="text-[9px] font-mono text-zinc-600">
+                      Encrypted NoPixel V Network
+                    </span>
+                  </div>
                 </div>
               ) : (
                 <div className="flex flex-col flex-1 min-h-0">

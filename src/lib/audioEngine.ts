@@ -10,6 +10,42 @@ class LagosAudioEngine {
   private engineSubOsc: OscillatorNode | null = null;
   private engineFilter: BiquadFilterNode | null = null;
   private engineGain: GainNode | null = null;
+  private masterGain: GainNode | null = null;
+  private musicGain: GainNode | null = null;
+  private masterVolume = 1;
+  private musicVolume = 0.8;
+
+  /** Master SFX bus (all sounds route through here). */
+  private out(): AudioNode {
+    if (!this.ctx) throw new Error('Audio context not ready');
+    if (!this.masterGain) {
+      this.masterGain = this.ctx.createGain();
+      this.masterGain.gain.value = this.masterVolume;
+      this.masterGain.connect(this.ctx.destination);
+    }
+    return this.masterGain;
+  }
+
+  /** Music bus (routes into master so master volume also applies). */
+  private musicOut(): AudioNode {
+    if (!this.ctx) throw new Error('Audio context not ready');
+    if (!this.musicGain) {
+      this.musicGain = this.ctx.createGain();
+      this.musicGain.gain.value = this.musicVolume;
+      this.musicGain.connect(this.out());
+    }
+    return this.musicGain;
+  }
+
+  public setMasterVolume(v: number) {
+    this.masterVolume = Math.max(0, Math.min(1, v));
+    if (this.masterGain) this.masterGain.gain.value = this.masterVolume;
+  }
+
+  public setMusicVolume(v: number) {
+    this.musicVolume = Math.max(0, Math.min(1, v));
+    if (this.musicGain) this.musicGain.gain.value = this.musicVolume;
+  }
 
   private initCtx() {
     if (!this.ctx && typeof window !== 'undefined') {
@@ -50,7 +86,7 @@ class LagosAudioEngine {
 
     osc1.connect(gain);
     osc2.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.out());
 
     osc1.start(t);
     osc2.start(t);
@@ -76,7 +112,7 @@ class LagosAudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.72);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.out());
 
     osc.start(t);
     osc.stop(t + 0.75);
@@ -104,7 +140,7 @@ class LagosAudioEngine {
       gain.gain.exponentialRampToValueAtTime(0.001, start + 0.25);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.out());
 
       osc.start(start);
       osc.stop(start + 0.26);
@@ -129,7 +165,7 @@ class LagosAudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.out());
 
     osc.start(t);
     osc.stop(t + 0.32);
@@ -152,7 +188,7 @@ class LagosAudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.out());
 
     osc.start(t);
     osc.stop(t + 0.08);
@@ -175,7 +211,7 @@ class LagosAudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.out());
 
     osc.start(t);
     osc.stop(t + 0.26);
@@ -194,7 +230,7 @@ class LagosAudioEngine {
     gain.gain.setValueAtTime(0.2, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.out());
     osc.start(t);
     osc.stop(t + 0.09);
   }
@@ -212,7 +248,7 @@ class LagosAudioEngine {
     gain.gain.setValueAtTime(0.18, t);
     gain.gain.exponentialRampToValueAtTime(0.01, t + 0.35);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.out());
     osc.start(t);
     osc.stop(t + 0.36);
   }
@@ -233,7 +269,7 @@ class LagosAudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.out());
 
     osc.start(t);
     osc.stop(t + 0.15);
@@ -255,7 +291,7 @@ class LagosAudioEngine {
       gain.gain.setValueAtTime(0.14, start);
       gain.gain.exponentialRampToValueAtTime(0.001, start + 0.1);
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.out());
       osc.start(start);
       osc.stop(start + 0.11);
     });
@@ -279,7 +315,7 @@ class LagosAudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.out());
 
     osc.start(t);
     osc.stop(t + 0.36);
@@ -306,7 +342,7 @@ class LagosAudioEngine {
       gain.gain.exponentialRampToValueAtTime(0.001, start + 0.4);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.out());
 
       osc.start(start);
       osc.stop(start + 0.45);
@@ -330,7 +366,7 @@ class LagosAudioEngine {
     gain.gain.linearRampToValueAtTime(0, t + 0.6);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.out());
 
     osc.start(t);
     osc.stop(t + 0.65);
@@ -355,7 +391,7 @@ class LagosAudioEngine {
     gain.gain.linearRampToValueAtTime(0, t + 0.2);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.out());
 
     osc.start(t);
     osc.stop(t + 0.22);
@@ -378,7 +414,7 @@ class LagosAudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.out());
 
     osc.start(t);
     osc.stop(t + 0.06);
@@ -399,7 +435,7 @@ class LagosAudioEngine {
       gain.gain.setValueAtTime(0.35, t);
       gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.musicOut());
       osc.start(t);
       osc.stop(t + 0.22);
     } else if (type === 'snare') {
@@ -410,7 +446,7 @@ class LagosAudioEngine {
       gain.gain.setValueAtTime(0.2, t);
       gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.musicOut());
       osc.start(t);
       osc.stop(t + 0.15);
     } else {
@@ -421,7 +457,7 @@ class LagosAudioEngine {
       gain.gain.setValueAtTime(0.05, t);
       gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.musicOut());
       osc.start(t);
       osc.stop(t + 0.06);
     }
@@ -473,7 +509,7 @@ class LagosAudioEngine {
         bassGain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
 
         bassOsc.connect(bassGain);
-        bassGain.connect(this.ctx.destination);
+        bassGain.connect(this.musicOut());
         bassOsc.start(t);
         bassOsc.stop(t + 0.28);
       }
@@ -515,7 +551,7 @@ class LagosAudioEngine {
       this.engineOsc.connect(this.engineFilter);
       this.engineSubOsc.connect(this.engineFilter);
       this.engineFilter.connect(this.engineGain);
-      this.engineGain.connect(this.ctx.destination);
+      this.engineGain.connect(this.out());
 
       this.engineOsc.start();
       this.engineSubOsc.start();
@@ -551,7 +587,7 @@ class LagosAudioEngine {
     oscGain.gain.setValueAtTime(0.32 * clamped, t);
     oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
     osc.connect(oscGain);
-    oscGain.connect(this.ctx.destination);
+    oscGain.connect(this.out());
     osc.start(t);
     osc.stop(t + 0.3);
 
@@ -577,7 +613,7 @@ class LagosAudioEngine {
 
     noise.connect(filter);
     filter.connect(nGain);
-    nGain.connect(this.ctx.destination);
+    nGain.connect(this.out());
     noise.start(t);
   }
 }

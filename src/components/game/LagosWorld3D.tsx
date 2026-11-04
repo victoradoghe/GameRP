@@ -2019,8 +2019,11 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       }
     };
     const rotateCam = (dx: number, dy: number) => {
-      cam.yaw -= dx * 0.0032;
-      cam.pitch = Math.max(-0.15, Math.min(1.15, cam.pitch + dy * 0.0026));
+      const gs = propsRef.current.graphicsSettings;
+      const sens = gs?.mouseSensitivity ?? 1;
+      const ySign = gs?.invertY ? -1 : 1;
+      cam.yaw -= dx * 0.0032 * sens;
+      cam.pitch = Math.max(-0.15, Math.min(1.15, cam.pitch + dy * 0.0026 * sens * ySign));
       cam.lastInput = performance.now();
     };
     const onPointerMove = (e: PointerEvent) => {
@@ -2218,9 +2221,10 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       const day = THREE.MathUtils.clamp(elev * 1.6 + 0.15, 0, 1);
       const night = 1 - day;
 
+      const userBrightness = propsRef.current.graphicsSettings?.brightness ?? 1;
       if (activeInterior) {
         // Tone down exposure & bloom indoors so building interiors look rich, grounded, and never over-bright!
-        renderer.toneMappingExposure = 0.75;
+        renderer.toneMappingExposure = 0.75 * userBrightness;
         bloomPass.strength = 0.11;
         skyColor.lerp(indoorBg, Math.min(1, dt * 8));
         fog.color.copy(skyColor);
@@ -2237,7 +2241,7 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
           activeInterior!.animatedSprites[idx].position.y = 2.35 + Math.sin(t * 2.4 + idx) * 0.1;
         });
       } else {
-        renderer.toneMappingExposure = 1.04;
+        renderer.toneMappingExposure = 1.04 * userBrightness;
         bloomPass.strength = 0.28;
         // Cycle outdoor traffic signals (Green -> Amber -> Red) & pan outdoor CCTV cameras
         trafficLightSets.forEach((tls) => {
@@ -3051,7 +3055,8 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
           cam.shake = Math.max(0, cam.shake - dt * 2);
         }
         camera.lookAt(target.x + fx * 1.5, target.y, target.z + fz * 1.5);
-        const fov = 60 + speedFrac * (flyingPlane ? 18 : 16);
+        const baseFov = p.graphicsSettings?.fov ?? 60;
+        const fov = baseFov + speedFrac * (flyingPlane ? 18 : 16);
         if (Math.abs(camera.fov - fov) > 0.1) {
           camera.fov += (fov - camera.fov) * Math.min(1, dt * 3);
           camera.updateProjectionMatrix();
