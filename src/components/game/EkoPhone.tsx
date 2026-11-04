@@ -3140,53 +3140,27 @@ export const EkoPhone: React.FC<EkoPhoneProps> = ({
                         </button>
 
                         {isCurrent ? (
-                          <div className="py-1.5 rounded-xl bg-indigo-500/25 border border-indigo-400 text-indigo-200 text-center text-xs font-bold flex items-center justify-center gap-1">
-                            <CheckCircle2 size={12} /> Current Home
+                          <div className="py-1.5 rounded-xl bg-amber-500/25 border border-amber-400 text-amber-200 text-center text-xs font-black flex items-center justify-center gap-1">
+                            <CheckCircle2 size={12} /> Current Active Home
                           </div>
                         ) : (
                           <button
                             onClick={() => {
-                              if (player.cash < prop.deposit && player.bankBalance < prop.deposit) {
-                                onAddNotification(
-                                  'Insufficient Funds',
-                                  `Need ${formatNaira(prop.deposit)} deposit.`,
-                                  'warning'
-                                );
-                                return;
-                              }
-                              if (vitals.streetCred < prop.credReq) {
-                                onAddNotification(
-                                  'Cred Too Low',
-                                  `Need ${prop.credReq} Street Cred for this luxury address.`,
-                                  'warning'
-                                );
-                                return;
-                              }
                               audioEngine.playCashEarn();
-                              if (player.cash >= prop.deposit) {
-                                onUpdatePlayer((p) => ({
-                                  ...p,
-                                  cash: p.cash - prop.deposit,
-                                  housing: prop.id as any,
-                                  rentAmount: prop.rent,
-                                }));
-                              } else {
-                                onUpdatePlayer((p) => ({
-                                  ...p,
-                                  bankBalance: p.bankBalance - prop.deposit,
-                                  housing: prop.id as any,
-                                  rentAmount: prop.rent,
-                                }));
-                              }
+                              onUpdatePlayer((p) => ({
+                                ...p,
+                                housing: prop.id as any,
+                                rentAmount: prop.rent,
+                              }));
                               onAddNotification(
-                                'Dynasty 8 Contract Signed 🏠',
-                                `Moved into ${prop.name}! Comfort ${prop.comfort}/100 active.`,
+                                'Dynasty 8 • Welcome Home! 🏠',
+                                `Moved into ${prop.name}! Your garage now supports ${prop.garageCapacity || 2} vehicles.`,
                                 'success'
                               );
                             }}
-                            className="py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-md"
+                            className="py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-xs shadow-md flex items-center justify-center gap-1"
                           >
-                            Lease ({formatNaira(prop.deposit)})
+                            ✓ Move In Now
                           </button>
                         )}
                       </div>

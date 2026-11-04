@@ -3,6 +3,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Play,
+  Home,
+  Building2,
+  Crown,
+  Warehouse,
   Save,
   LogOut,
   Monitor,
@@ -26,7 +30,8 @@ import {
   Sun,
   Eye,
 } from 'lucide-react';
-import { GraphicsSettings, PlayerStats, Vitals, CityId } from '@/lib/types';
+import { GraphicsSettings, PlayerStats, Vitals, CityId, PropertySpec } from '@/lib/types';
+import { REAL_ESTATE } from '@/lib/gameState';
 import { audioEngine } from '@/lib/audioEngine';
 
 export type SettingsTab = 'game' | 'stats' | 'display' | 'graphics' | 'audio' | 'controls' | 'account';
@@ -71,6 +76,8 @@ export interface GameSettingsMenuProps {
   onOpenMap?: () => void;
   onOpenHelp?: () => void;
   onOpenCustomizer?: () => void;
+  onSwitchHousing?: (housing: PropertySpec['id']) => void;
+  onTeleportToHousing?: (housing: PropertySpec['id']) => void;
 }
 
 const TABS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
@@ -453,6 +460,118 @@ export const GameSettingsMenu: React.FC<GameSettingsMenuProps> = (props) => {
               )}
             </div>
           )}
+
+          
+              {/* Active Residence & Property Switcher */}
+              <div className="p-4 border-b border-white/[0.06] bg-white/[0.02]">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Home size={15} className="text-amber-400" />
+                    <span className="text-[12px] font-black uppercase tracking-wider text-white">
+                      Active Residence &amp; Estate Switcher
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono text-zinc-400">
+                    Switch home or fast-travel instantly
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                  {REAL_ESTATE.map((prop) => {
+                    const isCurrent = player.housing === prop.id;
+                    const isMansion = prop.id === 'ikoyi-mansion';
+
+                    return (
+                      <div
+                        key={prop.id}
+                        className={`p-3 rounded-lg border transition-all flex flex-col justify-between gap-2 ${
+                          isCurrent
+                            ? isMansion
+                              ? 'bg-amber-950/40 border-amber-500/70 shadow-lg shadow-amber-500/10'
+                              : 'bg-teal-950/40 border-teal-500/70 shadow-lg shadow-teal-500/10'
+                            : 'bg-black/30 border-white/10 hover:border-white/20'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${
+                                isMansion
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                  : 'bg-white/10 text-zinc-300 border-white/10'
+                              }`}
+                            >
+                              {isMansion ? <Crown size={16} /> : <Home size={15} />}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className={`text-[9px] font-mono font-black uppercase px-1 py-0.2 rounded ${
+                                    isMansion
+                                      ? 'bg-amber-500/30 text-amber-300'
+                                      : 'bg-white/10 text-zinc-300'
+                                  }`}
+                                >
+                                  {prop.badge}
+                                </span>
+                                <span className="text-[10px] text-zinc-400 font-mono">
+                                  {prop.district}
+                                </span>
+                              </div>
+                              <h5 className="text-[11px] font-black text-white mt-0.5">{prop.name}</h5>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <span
+                              className={`text-[11px] font-mono font-bold block ${
+                                isMansion ? 'text-amber-400' : 'text-emerald-400'
+                              }`}
+                            >
+                              {prop.rent === 0 ? 'Free' : formatNaira(prop.rent)}
+                            </span>
+                            <span className="text-[9px] font-mono text-zinc-400 block">
+                              {prop.garageCapacity}-Car Garage
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-1.5 pt-1 border-t border-white/5">
+                          {isCurrent ? (
+                            <span className="text-[10px] font-mono font-bold text-amber-300 flex items-center gap-1">
+                              ✓ Current Home Active
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                audioEngine.playClick();
+                                props.onSwitchHousing?.(prop.id as any);
+                              }}
+                              className="px-2.5 py-1 rounded bg-white/10 hover:bg-white/20 text-[10px] font-black uppercase text-white transition-colors"
+                            >
+                              Set As Home
+                            </button>
+                          )}
+
+                          {props.onTeleportToHousing && (
+                            <button
+                              onClick={() => {
+                                audioEngine.playClick();
+                                props.onTeleportToHousing?.(prop.id as any);
+                                props.onResume();
+                              }}
+                              className="ml-auto px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-400 text-black text-[10px] font-black uppercase flex items-center gap-1 transition-colors shadow"
+                            >
+                              ⚡ Teleport To Gate
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
           {/* ---------- STATS ---------- */}
           {tab === 'stats' && (

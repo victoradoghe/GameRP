@@ -31,6 +31,7 @@ export interface BuiltInterior {
   spawnZ: number;
   spawnHeading: number;
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
+  floorY?: (x: number, z: number) => number;
 }
 
 type FloorStyle = 'parquet' | 'marble' | 'terrazzo' | 'tech' | 'club' | 'terracotta' | 'hospital';
@@ -185,7 +186,8 @@ function makeStationSprite(emoji: string, label: string, color: string) {
 
 export function buildBuildingInterior(
   districtId: LagosDistrict,
-  city: CityId = 'lagos'
+  city: CityId = 'lagos',
+  housing: string = 'face-me-i-face-you'
 ): BuiltInterior {
   const group = new THREE.Group();
   const colliders: AABB[] = [];
@@ -196,9 +198,14 @@ export function buildBuildingInterior(
   const animatedRings: THREE.Mesh[] = [];
   const animatedSprites: THREE.Sprite[] = [];
 
-  const W = 24;
-  const D = 22;
-  const H = 5.4;
+  const isMansion = districtId === 'home' && (housing === 'ikoyi-mansion' || housing === 'mansion');
+  const isDuplex = districtId === 'home' && housing === 'lekki-duplex';
+  const isFlat = districtId === 'home' && housing === 'mainland-flat';
+  const isFaceMe = districtId === 'home' && (housing === 'face-me-i-face-you' || housing === 'squatting');
+
+  const W = isMansion ? 44 : isDuplex ? 32 : isFaceMe ? 18 : 24;
+  const D = isMansion ? 36 : isDuplex ? 26 : isFaceMe ? 16 : 22;
+  const H = isMansion ? 10.4 : isDuplex ? 5.8 : isFaceMe ? 4.2 : 5.4;
   const halfW = W / 2;
   const halfD = D / 2;
 
@@ -209,11 +216,23 @@ export function buildBuildingInterior(
     { title: string; subtitle: string; floor: FloorStyle; wallColor: number; lightColor: number }
   > = {
     home: {
-      title: isAbuja ? 'Your Maitama Luxury Villa' : 'Your Lekki / Ikoyi Duplex Residence',
-      subtitle: 'Living Lounge • Developer Office • Master Bedroom • Solar & NEPA Smart Wall',
-      floor: 'parquet',
-      wallColor: 0x1e293b,
-      lightColor: 0xffd8a8,
+      title: isMansion
+        ? (isAbuja ? 'Maitama Hills Billionaire Mega Estate' : 'Banana Island Billionaire Mega Mansion & Compound')
+        : isDuplex
+        ? (isAbuja ? 'Maitama Waterfront Penthouse' : 'VI Waterfront Luxury Penthouse')
+        : isFlat
+        ? (isAbuja ? 'Wuse II Modern Tech Flat' : 'Yaba Tech Corridor Modern Flat')
+        : (isAbuja ? 'Mararaba Budget Tenement' : 'Mushin Mainland Face-Me-I-Face-You'),
+      subtitle: isMansion
+        ? 'Grand 2-Story Hall • Upstairs Presidential Suites • Jacuzzi Spa • Cinema Room • Vault'
+        : isDuplex
+        ? 'Designer Living Room • Lagoon Balcony • Island Kitchen • Master Suite • Spa'
+        : isFlat
+        ? 'Developer Battlestation • Smart TV Lounge • Kitchenette • 5kVA Solar Inverter'
+        : 'Single Foam Bed • Kerosene Stove Corner • Padlock Wooden Door',
+      floor: isMansion ? 'marble' : isDuplex ? 'parquet' : isFlat ? 'terrazzo' : 'terracotta',
+      wallColor: isMansion ? 0x18181b : isDuplex ? 0x1e293b : isFlat ? 0x1f2937 : 0x27272a,
+      lightColor: isMansion ? 0xfef08a : isDuplex ? 0xffeedd : isFlat ? 0x93c5fd : 0xfde047,
     },
     computervillage: {
       title: isAbuja ? 'Banex Plaza Flagship Tech Store' : 'Computer Village & Slot Flagship Store',
@@ -736,105 +755,618 @@ export function buildBuildingInterior(
   // ---------------- 2. BESPOKE 3D FURNITURE & WORKERS PER BUILDING ----------------
   switch (districtId) {
     case 'home': {
-      const rug = new THREE.Mesh(
-        new THREE.BoxGeometry(7.2, 0.03, 5.4),
-        new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.95 })
-      );
-      rug.position.set(-2.5, 0.015, 1.5);
-      group.add(rug);
+      if (isMansion) {
+        // ==================== BANANA ISLAND BILLIONAIRE MEGA MANSION ====================
+        // Dimensions: W = 44 (-22 to +22), D = 36 (-18 to +18), H = 10.4
+        // Ground Floor y = 0.02, Second Floor / Upstairs y = 4.8
 
-      addProp(-2.5, 0, 3.3, 4.6, 0.5, 1.25, velvetTeal);
-      addProp(-2.5, 0.5, 3.78, 4.6, 0.55, 0.28, velvetTeal, false);
-      addProp(-4.5, 0, 1.9, 1.2, 0.5, 3.6, velvetTeal);
-      addProp(-2.3, 0, 1.3, 2.2, 0.42, 1.1, glassCaseMat);
+        // 1. Double-Height Grand Living Hall (x: -8 to 8, z: 2 to 16)
+        const silkRug = new THREE.Mesh(
+          new THREE.BoxGeometry(11.5, 0.03, 8.5),
+          new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.95 })
+        );
+        silkRug.position.set(0, 0.015, 8.5);
+        group.add(silkRug);
 
-      addProp(-2.3, 0, -0.8, 3.8, 0.65, 0.65, darkWood);
-      addProp(-2.3, 0.75, -0.8, 3.2, 1.75, 0.1, darkMetal, false);
-      const tvScreen = new THREE.Mesh(new THREE.PlaneGeometry(3.05, 1.6), screenCyan);
-      tvScreen.position.set(-2.3, 1.63, -0.73);
-      group.add(tvScreen);
+        // Curved Designer Velvet Sofa Sectional (White/Cream & Gold)
+        addProp(0, 0, 9.8, 8.4, 0.58, 1.6, whiteMat);
+        addProp(0, 0.58, 10.45, 8.4, 0.65, 0.35, whiteMat, false);
+        addProp(-4.4, 0, 8.2, 1.5, 0.58, 4.6, whiteMat);
+        addProp(4.4, 0, 8.2, 1.5, 0.58, 4.6, whiteMat);
 
-      // Private Domestic Chef & Estate Butler
-      addNpc(-9.2, 2.2, Math.PI / 2, '#f8fafc', '#0f172a', 'idle', 'cap');
-      addNpc(3.2, 5.5, Math.PI, '#1e293b', '#09090b', 'salute');
+        // Calacatta Marble & Gold Coffee Table
+        addProp(0, 0, 7.8, 4.2, 0.45, 1.8, goldMat);
+        addProp(0, 0.45, 7.8, 4.0, 0.06, 1.6, whiteMat, false);
 
-      // HOME DEVELOPER OFFICE
-      addProp(-7.6, 0, -7.2, 3.8, 0.82, 1.5, darkWood);
-      addProp(-7.6, 0, -5.6, 0.75, 0.95, 0.75, darkMetal, false);
-      addProp(-8.2, 0.85, -7.4, 1.25, 0.78, 0.08, screenCyan, false);
-      addProp(-6.9, 0.85, -7.4, 1.25, 0.78, 0.08, screenGreen, false);
-      addProp(-7.55, 0.83, -6.85, 0.55, 0.04, 0.38, silverMetal, false);
-      addStation({
-        id: 'int:home_laptop',
-        name: 'Developer Laptop Workstation',
-        actionLabel: 'Code Remote Contract / Switch Laptop',
-        x: -7.5,
-        z: -4.8,
-        color: '#6366f1',
-        icon: '💻',
-      });
+        // 100" 8K Curved Entertainment Center & Soundbar
+        addProp(0, 0, 16.8, 7.5, 0.85, 0.8, darkMetal);
+        addProp(0, 0.9, 16.8, 6.8, 3.4, 0.12, darkMetal, false);
+        const bigScreen = new THREE.Mesh(new THREE.PlaneGeometry(6.6, 3.2), screenCyan);
+        bigScreen.position.set(0, 2.6, 16.73);
+        group.add(bigScreen);
 
-      // MASTER BEDROOM SUITE
-      addProp(7.2, 0, -7.0, 4.2, 0.52, 4.6, darkWood);
-      addProp(7.2, 0.52, -6.9, 3.9, 0.28, 4.3, whiteMat, false);
-      addProp(7.2, 0.68, -5.8, 3.95, 0.18, 2.2, velvetTeal, false);
-      addProp(6.2, 0.82, -8.4, 1.3, 0.18, 0.65, whiteMat, false);
-      addProp(8.2, 0.82, -8.4, 1.3, 0.18, 0.65, whiteMat, false);
-      addProp(7.2, 0, -9.25, 4.4, 1.65, 0.25, darkWood, false);
-      addStation({
-        id: 'int:home_bed',
-        name: 'King-Size Master Bed',
-        actionLabel: 'Sleep & Restore 100% Energy + Health',
-        x: 7.2,
-        z: -3.8,
-        color: '#14b8a6',
-        icon: '🛏️',
-      });
+        // 2-Tier Grand Crystal & Gold Chandelier hanging from high ceiling
+        const chStem = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.8, 8), goldMat);
+        chStem.position.set(0, H - 1.4, 8.5);
+        const chTier1 = new THREE.Mesh(new THREE.TorusGeometry(2.4, 0.12, 8, 24), goldMat);
+        chTier1.rotation.x = Math.PI / 2;
+        chTier1.position.set(0, H - 2.8, 8.5);
+        const chTier2 = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.1, 8, 24), goldMat);
+        chTier2.rotation.x = Math.PI / 2;
+        chTier2.position.set(0, H - 3.4, 8.5);
+        group.add(chStem, chTier1, chTier2);
 
-      addProp(10.6, 0, -1.8, 1.3, 2.8, 3.4, oakWood);
-      addStation({
-        id: 'int:home_wardrobe',
-        name: 'Walk-In Designer Wardrobe',
-        actionLabel: 'Change 3D Character Outfit & Drip',
-        x: 9.0,
-        z: -1.8,
-        color: '#ec4899',
-        icon: '👕',
-      });
+        // Baby Grand Piano in Black Gloss Lacquer
+        addProp(6.8, 0, 12.8, 2.8, 0.95, 2.6, darkMetal);
+        addProp(6.8, 0, 11.2, 1.1, 0.55, 0.6, velvetTeal);
 
-      addProp(2.6, 0, -9.8, 1.3, 1.6, 0.9, darkMetal);
-      addStation({
-        id: 'int:home_safe',
-        name: 'Personal Cash Safe & Residence Hub',
-        actionLabel: 'Manage Safe Cash & Home Upgrades',
-        x: 2.6,
-        z: -8.2,
-        color: '#f59e0b',
-        icon: '🔐',
-      });
+        addStation({
+          id: 'int:home_tv',
+          name: 'Presidential Grand Living Hall',
+          actionLabel: 'Watch 8K Cinema Stream & Relax (-35 Stress)',
+          x: 0,
+          z: 8.5,
+          color: '#f59e0b',
+          icon: '📺',
+        });
 
-      addProp(10.8, 0.9, 4.2, 0.65, 1.85, 2.4, whiteMat);
-      addProp(10.44, 1.35, 4.2, 0.08, 0.95, 1.6, screenGreen, false);
-      addStation({
-        id: 'int:home_solar',
-        name: 'Solar Inverter & NEPA Meter Panel',
-        actionLabel: 'Pay NEPA Bill, Fuel Gen or Buy Solar',
-        x: 9.1,
-        z: 4.2,
-        color: '#10b981',
-        icon: '☀️',
-      });
+        // 2. Executive Chef Gourmet Kitchen & Banquet Hall (West Wing: x: -21 to -9, z: 2 to 17)
+        addProp(-15, 0, 9.5, 6.2, 0.95, 2.4, whiteMat);
+        addProp(-15, 0.95, 9.5, 6.4, 0.08, 2.6, goldMat, false);
+        for (const bx of [-17.2, -15.8, -14.4, -13.0]) {
+          addProp(bx, 0, 8.0, 0.6, 0.72, 0.6, darkWood, false);
+        }
+        addProp(-20.5, 0, 14.8, 1.8, 3.2, 3.4, silverMetal);
+        addProp(-20.5, 0, 9.5, 1.6, 0.95, 4.2, darkMetal);
+        addProp(-20.5, 2.8, 9.5, 1.8, 0.8, 3.2, silverMetal, false);
 
-      addProp(-9.8, 0, 3.8, 1.6, 2.3, 1.4, silverMetal);
-      addStation({
-        id: 'int:home_fridge',
-        name: 'Smart Kitchen & Double Fridge',
-        actionLabel: 'Eat Fresh Home Meal (+Hunger & +Thirst)',
-        x: -8.0,
-        z: 3.8,
-        color: '#22d3ee',
-        icon: '🍽️',
-      });
+        addProp(-15, 0, 3.6, 5.8, 0.82, 2.2, darkWood);
+        for (const dx of [-2.0, -0.7, 0.7, 2.0]) {
+          addProp(-15 + dx, 0, 2.2, 0.65, 0.95, 0.65, velvetTeal, false);
+          addProp(-15 + dx, 0, 5.0, 0.65, 0.95, 0.65, velvetTeal, false);
+        }
+
+        // Private Domestic Executive Chef Butler NPC
+        addNpc(-17.2, 11.5, Math.PI / 2, '#f8fafc', '#0f172a', 'salute', 'cap');
+
+        addStation({
+          id: 'int:home_fridge',
+          name: 'Executive Chef Gourmet Kitchen',
+          actionLabel: 'Eat 5-Star Gourmet Feast (+100 Hunger & Thirst)',
+          x: -15,
+          z: 9.5,
+          color: '#22d3ee',
+          icon: '🍽️',
+        });
+
+        // 3. Private Cognac & Champagne Bar (East Wing: x: 9 to 21, z: 2 to 17)
+        addProp(15, 0, 9.0, 5.8, 1.1, 1.8, darkMetal);
+        addProp(15, 1.1, 9.0, 6.0, 0.08, 2.0, goldMat, false);
+        for (const bx of [12.8, 14.2, 15.6, 17.0]) {
+          addProp(bx, 0, 7.6, 0.6, 0.82, 0.6, darkWood, false);
+        }
+        addProp(21.2, 0, 9.0, 1.0, 3.8, 6.4, darkWood);
+        addProp(20.65, 1.2, 9.0, 0.15, 0.45, 5.8, goldMat, false);
+        addProp(20.65, 2.2, 9.0, 0.15, 0.45, 5.8, goldMat, false);
+
+        addStation({
+          id: 'int:home_bar',
+          name: 'Private Champagne & Cognac Bar',
+          actionLabel: 'Pour Vintage XO Cognac (-45 Stress & Party)',
+          x: 15,
+          z: 9.0,
+          color: '#eab308',
+          icon: '🍷',
+        });
+
+        // 4. Biometric Walk-in Bank Vault (South-West: x: -21 to -11, z: -5 to 2)
+        addProp(-16, 0, 2.0, 10.4, 4.6, 0.5, darkMetal);
+        addProp(-11, 0, -1.5, 0.5, 4.6, 7.0, darkMetal);
+        const vaultDoorRim = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 0.35, 24), goldMat);
+        vaultDoorRim.rotation.z = Math.PI / 2;
+        vaultDoorRim.position.set(-11, 2.0, -1.5);
+        const vaultHandle = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.08, 8, 16), silverMetal);
+        vaultHandle.rotation.y = Math.PI / 2;
+        vaultHandle.position.set(-10.8, 2.0, -1.5);
+        group.add(vaultDoorRim, vaultHandle);
+
+        addProp(-17, 0, -2.5, 2.8, 0.65, 1.6, goldMat);
+        addProp(-17, 0.65, -2.5, 2.4, 0.45, 1.4, goldMat, false);
+        addProp(-17, 0, 0.2, 3.2, 0.95, 1.4, screenGreen);
+        addProp(-17, 0.95, 0.2, 3.0, 0.85, 1.2, screenGreen, false);
+
+        addStation({
+          id: 'int:home_safe',
+          name: 'Biometric Walk-in Bank Vault',
+          actionLabel: 'Access Billionaire Vault (Deposit / Withdraw ₦100M)',
+          x: -15.5,
+          z: -1.5,
+          color: '#10b981',
+          icon: '🏦',
+        });
+
+        // 5. 8-Car Showroom Garage Elevator Terminal (South-East: x: 11 to 21, z: -5 to 2)
+        addProp(16, 0, 2.0, 10.4, 4.6, 0.5, darkMetal);
+        addProp(11, 0, -1.5, 0.5, 4.6, 7.0, darkMetal);
+        addProp(11.05, 0, -1.5, 0.15, 3.2, 2.6, screenCyan, false);
+        addStation({
+          id: 'int:home_garage',
+          name: '8-Car Showroom Garage Elevator',
+          actionLabel: 'Enter 8-Car Showroom & Drive Vehicle [G]',
+          x: 12.8,
+          z: -1.5,
+          color: '#38bdf8',
+          icon: '🏎️',
+        });
+
+        // 6. The Grand Architectural Staircase (Center: x: -3.5 to 3.5, z: 1.5 to -5.5)
+        const stepCount = 14;
+        const stairLength = 7.0;
+        const stepD = stairLength / stepCount;
+        const stepH = 4.8 / stepCount;
+        for (let i = 0; i < stepCount; i++) {
+          const sy = i * stepH;
+          const sz = 1.5 - i * stepD - stepD / 2;
+          addProp(0, 0, sz, 5.4, sy + stepH, stepD, whiteMat, false);
+          addProp(0, sy + stepH, sz + stepD / 2, 5.4, 0.04, 0.06, goldMat, false);
+        }
+        for (const sx of [-2.75, 2.75]) {
+          const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 7.8), goldMat);
+          rail.position.set(sx, 2.8, -2.0);
+          rail.rotation.x = Math.atan2(4.8, 7.0);
+          group.add(rail);
+        }
+
+        // ==================== UPSTAIRS SECOND FLOOR (y = 4.8 to 10.4, z: -5.5 to -18) ====================
+        const upstairsFloor = new THREE.Mesh(
+          new THREE.BoxGeometry(43.2, 0.35, 12.8),
+          new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.35 })
+        );
+        upstairsFloor.position.set(0, 4.65, -11.6);
+        upstairsFloor.receiveShadow = true;
+        group.add(upstairsFloor);
+
+        // Upper Mezzanine Glass Balustrade overlooking Grand Hall (at z = -5.5)
+        addProp(-10.5, 4.8, -5.5, 14.5, 1.05, 0.12, glassCaseMat);
+        addProp(10.5, 4.8, -5.5, 14.5, 1.05, 0.12, glassCaseMat);
+        addProp(-10.5, 5.85, -5.5, 14.5, 0.08, 0.14, goldMat, false);
+        addProp(10.5, 5.85, -5.5, 14.5, 0.08, 0.14, goldMat, false);
+
+        // 7. Presidential Master Suite (Upstairs East Wing: x: 6 to 21, z: -6 to -17)
+        addProp(6.0, 4.8, -11.5, 0.45, 5.2, 12.0, wallMat);
+        const masterRug = new THREE.Mesh(
+          new THREE.BoxGeometry(10.5, 0.02, 8.5),
+          new THREE.MeshStandardMaterial({ color: 0x3b0764, roughness: 0.95 })
+        );
+        masterRug.position.set(13.5, 4.82, -12.5);
+        group.add(masterRug);
+
+        addProp(14.0, 4.8, -14.8, 4.6, 0.85, 4.4, darkWood);
+        addProp(14.0, 5.65, -14.8, 4.3, 0.38, 4.1, whiteMat, false);
+        addProp(14.0, 6.03, -13.6, 4.35, 0.22, 2.2, velvetPurple, false);
+        for (const cx of [11.8, 16.2]) {
+          for (const cz of [-16.9, -12.7]) {
+            addProp(cx, 4.8, cz, 0.15, 3.8, 0.15, goldMat, false);
+          }
+        }
+        addProp(14.0, 8.6, -14.8, 4.6, 0.12, 4.4, velvetPurple, false);
+
+        addProp(14.0, 4.8, -7.2, 3.8, 1.4, 0.6, darkMetal);
+        addProp(14.0, 5.2, -7.1, 2.6, 0.6, 0.2, goldMat, false);
+
+        addProp(20.8, 4.8, -11.5, 1.2, 4.6, 8.5, oakWood);
+        addProp(19.2, 4.8, -7.5, 2.8, 4.6, 1.2, oakWood);
+
+        addStation({
+          id: 'int:home_bed',
+          name: 'Presidential Master Suite',
+          actionLabel: 'Sleep & Restore 100% Health, Stamina & Energy',
+          x: 14.0,
+          z: -11.5,
+          color: '#a855f7',
+          icon: '👑',
+        });
+
+        addStation({
+          id: 'int:home_wardrobe',
+          name: 'Walk-In Designer Wardrobe',
+          actionLabel: 'Change 3D Outfit & Traditional Agbada Drip',
+          x: 18.5,
+          z: -11.5,
+          color: '#ec4899',
+          icon: '👔',
+        });
+
+        // 8. Marble Spa Bathroom, Heated Jacuzzi & Cedar Sauna (Upstairs West Wing: x: -21 to -6, z: -6 to -17)
+        addProp(-6.0, 4.8, -11.5, 0.45, 5.2, 12.0, wallMat);
+
+        const jacuzziBase = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.8, 1.1, 24), whiteMat);
+        jacuzziBase.position.set(-13.5, 5.35, -13.5);
+        const waterMat = new THREE.MeshStandardMaterial({
+          color: 0x06b6d4,
+          emissive: 0x0891b2,
+          emissiveIntensity: 0.6,
+          roughness: 0.1,
+          transparent: true,
+          opacity: 0.85,
+        });
+        const jacuzziWater = new THREE.Mesh(new THREE.CylinderGeometry(2.35, 2.35, 0.12, 24), waterMat);
+        jacuzziWater.position.set(-13.5, 5.85, -13.5);
+        const jacuzziLight = new THREE.PointLight(0x06b6d4, 1.5, 8);
+        jacuzziLight.position.set(-13.5, 6.2, -13.5);
+        group.add(jacuzziBase, jacuzziWater, jacuzziLight);
+
+        // Swedish Cedarwood Steam Sauna Cabin
+        addProp(-18.5, 4.8, -8.0, 3.8, 3.6, 3.2, oakWood);
+        addProp(-16.55, 4.8, -8.0, 0.12, 3.2, 1.8, glassCaseMat, false);
+
+        // Dual Frameless Glass Rainfall Showers
+        addProp(-18.5, 4.8, -14.5, 2.8, 3.8, 2.8, glassCaseMat);
+        addProp(-18.5, 8.4, -14.5, 0.6, 0.08, 0.6, goldMat, false);
+
+        addStation({
+          id: 'int:home_jacuzzi',
+          name: 'Heated Jacuzzi Spa & Steam Sauna',
+          actionLabel: 'Soak in Jacuzzi Spa (+100 Health & Clear Stress)',
+          x: -13.5,
+          z: -13.5,
+          color: '#06b6d4',
+          icon: '🛁',
+        });
+
+        // 9. Private Dolby Atmos Cinema Screening Lounge (Upstairs Center: x: -5.5 to 5.5, z: -7 to -17)
+        const redVelvet = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.92 });
+        addProp(0, 4.8, -9.5, 6.8, 0.45, 1.8, redVelvet);
+        addProp(0, 5.25, -9.5, 6.8, 0.55, 0.45, redVelvet, false);
+        addProp(0, 4.8, -12.5, 8.2, 0.5, 2.2, darkMetal, false);
+        addProp(0, 5.3, -12.5, 6.8, 0.45, 1.8, redVelvet);
+        addProp(0, 5.75, -12.5, 6.8, 0.55, 0.45, redVelvet, false);
+
+        addProp(0, 5.2, -17.5, 8.8, 4.2, 0.18, darkMetal, false);
+        const cinemaScreen = new THREE.Mesh(new THREE.PlaneGeometry(8.5, 3.9), screenCyan);
+        cinemaScreen.position.set(0, 7.3, -17.4);
+        group.add(cinemaScreen);
+
+        addStation({
+          id: 'int:home_cinema',
+          name: 'Private Dolby Atmos Cinema Room',
+          actionLabel: 'Play Private Premiere / Cinema Screening',
+          x: 0,
+          z: -11.0,
+          color: '#ef4444',
+          icon: '🎬',
+        });
+
+        // 10. Developer Tech Command Suite & Estate Solar Power (Mezzanine Center: x: -5 to 5, z: -5.8 to -1.5)
+        addProp(-2.5, 4.8, -3.8, 3.6, 0.85, 1.4, darkWood);
+        addProp(-3.2, 5.65, -3.8, 1.2, 0.75, 0.08, screenCyan, false);
+        addProp(-1.8, 5.65, -3.8, 1.2, 0.75, 0.08, screenGreen, false);
+        addProp(2.8, 4.8, -3.8, 1.6, 2.2, 1.2, screenGreen);
+
+        addStation({
+          id: 'int:home_laptop',
+          name: 'Developer Tech Command Station',
+          actionLabel: 'Code High-Roller Smart Contracts & Tech Work',
+          x: -2.5,
+          z: -3.8,
+          color: '#6366f1',
+          icon: '💻',
+        });
+
+        addStation({
+          id: 'int:home_solar',
+          name: '20kVA Solar Inverter & Estate Power Hub',
+          actionLabel: 'Manage 20kVA Solar & Compound Power Grid',
+          x: 2.8,
+          z: -3.8,
+          color: '#10b981',
+          icon: '☀️',
+        });
+
+        // 11. Rooftop Sky Pool & Private Helipad Access Door
+        addStation({
+          id: 'int:home_rooftop',
+          name: 'Rooftop Terrace & Private Helipad',
+          actionLabel: 'Step onto Rooftop Sky Pool & Private Helipad',
+          x: 0,
+          z: -15.5,
+          color: '#facc15',
+          icon: '🚁',
+        });
+      } else if (isDuplex) {
+        // ==================== VI WATERFRONT LUXURY PENTHOUSE (LEKKI DUPLEX) ====================
+        // Dimensions: W = 32, D = 26, H = 5.8
+        const pentRug = new THREE.Mesh(
+          new THREE.BoxGeometry(8.5, 0.03, 6.2),
+          new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.95 })
+        );
+        pentRug.position.set(-3.5, 0.015, 2.5);
+        group.add(pentRug);
+
+        addProp(-3.5, 0, 4.5, 6.2, 0.55, 1.5, velvetTeal);
+        addProp(-3.5, 0.55, 5.15, 6.2, 0.6, 0.35, velvetTeal, false);
+        addProp(-3.5, 0, 2.0, 3.2, 0.45, 1.4, glassCaseMat);
+
+        addProp(-3.5, 0, -1.2, 5.4, 0.8, 0.6, darkWood);
+        const pentTv = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 2.2), screenCyan);
+        pentTv.position.set(-3.5, 1.9, -1.13);
+        group.add(pentTv);
+
+        addStation({
+          id: 'int:home_tv',
+          name: 'VI Lagoon View Designer Lounge',
+          actionLabel: 'Watch Lagoon View TV & Relax',
+          x: -3.5,
+          z: 2.5,
+          color: '#06b6d4',
+          icon: '📺',
+        });
+
+        // Gourmet Island Kitchen
+        addProp(-11.5, 0, 5.0, 4.5, 0.92, 2.0, whiteMat);
+        addProp(-14.2, 0, 8.5, 1.6, 2.8, 2.4, silverMetal);
+        addStation({
+          id: 'int:home_fridge',
+          name: 'Gourmet Island Kitchen & Wine Cooler',
+          actionLabel: 'Eat Fresh Home Meal (+85 Hunger & Thirst)',
+          x: -11.5,
+          z: 5.0,
+          color: '#22d3ee',
+          icon: '🍽️',
+        });
+
+        // Master Bedroom Suite
+        addProp(10.5, 0, -7.5, 4.4, 0.55, 4.4, darkWood);
+        addProp(10.5, 0.55, -7.5, 4.1, 0.32, 4.1, whiteMat, false);
+        addProp(10.5, 0.72, -6.5, 4.15, 0.2, 2.0, velvetPurple, false);
+        addStation({
+          id: 'int:home_bed',
+          name: 'Master Suite & Lagoon Balcony',
+          actionLabel: 'Rest in King Bed (+100 Energy & Health)',
+          x: 10.5,
+          z: -5.0,
+          color: '#a855f7',
+          icon: '🛏️',
+        });
+
+        addProp(14.5, 0, -2.5, 1.4, 3.2, 4.2, oakWood);
+        addStation({
+          id: 'int:home_wardrobe',
+          name: 'Walk-In Dressing Room',
+          actionLabel: 'Change 3D Character Outfit',
+          x: 12.8,
+          z: -2.5,
+          color: '#ec4899',
+          icon: '👕',
+        });
+
+        // Workstation & 10kVA Solar
+        addProp(-11.5, 0, -8.5, 3.6, 0.85, 1.4, darkWood);
+        addProp(-12.2, 0.85, -8.5, 1.2, 0.8, 0.08, screenCyan, false);
+        addStation({
+          id: 'int:home_laptop',
+          name: 'Executive Workstation',
+          actionLabel: 'Code Tech Projects / Laptops',
+          x: -11.5,
+          z: -6.5,
+          color: '#6366f1',
+          icon: '💻',
+        });
+
+        addProp(5.0, 0, -11.5, 1.4, 2.4, 1.0, screenGreen);
+        addStation({
+          id: 'int:home_solar',
+          name: '10kVA Hybrid Solar Inverter',
+          actionLabel: 'Manage 10kVA Solar & NEPA Inverter',
+          x: 5.0,
+          z: -9.8,
+          color: '#10b981',
+          icon: '☀️',
+        });
+
+        addProp(8.0, 0, -11.5, 1.4, 1.8, 0.9, darkMetal);
+        addStation({
+          id: 'int:home_safe',
+          name: 'Biometric Wall Safe',
+          actionLabel: 'Deposit / Withdraw Safe Cash',
+          x: 8.0,
+          z: -9.8,
+          color: '#f59e0b',
+          icon: '🔐',
+        });
+
+        addStation({
+          id: 'int:home_garage',
+          name: '4-Car Private Garage Access',
+          actionLabel: 'Open 4-Car Garage & Drive [G]',
+          x: 12.5,
+          z: 5.0,
+          color: '#38bdf8',
+          icon: '🚗',
+        });
+      } else if (isFaceMe) {
+        // ==================== MAINLAND FACE-ME-I-FACE-YOU BUDGET ROOM ====================
+        // Dimensions: W = 18, D = 16, H = 4.2
+        // Single Foam Mattress directly on the floor with Ankara blanket
+        addProp(4.5, 0, -4.5, 2.6, 0.32, 4.2, velvetTeal);
+        addProp(4.5, 0.32, -3.8, 2.5, 0.12, 2.2, velvetPurple, false);
+        addStation({
+          id: 'int:home_bed',
+          name: 'Single Foam Mattress',
+          actionLabel: 'Sleep & Recover Stamina',
+          x: 4.5,
+          z: -2.8,
+          color: '#14b8a6',
+          icon: '🛏️',
+        });
+
+        // Kerosene Cooking Stove & Plastic Jerrycans
+        addProp(-5.5, 0, -4.5, 1.4, 0.65, 1.2, darkMetal);
+        addProp(-6.5, 0, -2.8, 0.8, 0.85, 0.8, screenGreen, false); // Plastic Water Drum
+        addStation({
+          id: 'int:home_fridge',
+          name: 'Kerosene Stove Corner',
+          actionLabel: 'Cook Indomie Meal (+45 Hunger)',
+          x: -5.5,
+          z: -3.0,
+          color: '#f97316',
+          icon: '🍲',
+        });
+
+        // Wooden stool & nail wall hanger
+        addProp(1.0, 0, -5.8, 0.8, 0.55, 0.8, oakWood);
+        addStation({
+          id: 'int:home_wardrobe',
+          name: 'Wooden Stool & Clothes Peg',
+          actionLabel: 'Change Street Outfit',
+          x: 1.0,
+          z: -4.2,
+          color: '#ec4899',
+          icon: '👕',
+        });
+
+        // Padlock Wooden Bolt Door Box (Small hidden stash)
+        addProp(6.5, 0, 4.0, 1.0, 0.75, 0.8, darkWood);
+        addStation({
+          id: 'int:home_safe',
+          name: 'Floor Plank Cash Stash',
+          actionLabel: 'Stash Small Cash Under Floorboard',
+          x: 6.5,
+          z: 2.5,
+          color: '#f59e0b',
+          icon: '📦',
+        });
+
+        // Direct NEPA prepaid analog meter on wooden board
+        addProp(-6.5, 1.5, 2.5, 0.15, 0.65, 0.65, darkMetal, false);
+        addStation({
+          id: 'int:home_solar',
+          name: 'Direct NEPA Analog Meter',
+          actionLabel: 'Check NEPA Units / Recharge Token',
+          x: -5.2,
+          z: 2.5,
+          color: '#ef4444',
+          icon: '⚡',
+        });
+
+        addStation({
+          id: 'int:home_garage',
+          name: 'Curb Parking Spot',
+          actionLabel: 'Park / Fetch Vehicle [G]',
+          x: 0,
+          z: 4.5,
+          color: '#38bdf8',
+          icon: '🛵',
+        });
+      } else {
+        // ==================== YABA TECH 1-BEDROOM FLAT (DEFAULT) ====================
+        const rug = new THREE.Mesh(
+          new THREE.BoxGeometry(7.2, 0.03, 5.4),
+          new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.95 })
+        );
+        rug.position.set(-2.5, 0.015, 1.5);
+        group.add(rug);
+
+        addProp(-2.5, 0, 3.3, 4.6, 0.5, 1.25, velvetTeal);
+        addProp(-2.5, 0.5, 3.78, 4.6, 0.55, 0.28, velvetTeal, false);
+        addProp(-4.5, 0, 1.9, 1.2, 0.5, 3.6, velvetTeal);
+        addProp(-2.3, 0, 1.3, 2.2, 0.42, 1.1, glassCaseMat);
+
+        addProp(-2.3, 0, -0.8, 3.8, 0.65, 0.65, darkWood);
+        addProp(-2.3, 0.75, -0.8, 3.2, 1.75, 0.1, darkMetal, false);
+        const tvScreen = new THREE.Mesh(new THREE.PlaneGeometry(3.05, 1.6), screenCyan);
+        tvScreen.position.set(-2.3, 1.63, -0.73);
+        group.add(tvScreen);
+
+        addNpc(-9.2, 2.2, Math.PI / 2, '#f8fafc', '#0f172a', 'idle', 'cap');
+        addNpc(3.2, 5.5, Math.PI, '#1e293b', '#09090b', 'salute');
+
+        addProp(-7.6, 0, -7.2, 3.8, 0.82, 1.5, darkWood);
+        addProp(-7.6, 0, -5.6, 0.75, 0.95, 0.75, darkMetal, false);
+        addProp(-8.2, 0.85, -7.4, 1.25, 0.78, 0.08, screenCyan, false);
+        addProp(-6.9, 0.85, -7.4, 1.25, 0.78, 0.08, screenGreen, false);
+        addProp(-7.55, 0.83, -6.85, 0.55, 0.04, 0.38, silverMetal, false);
+        addStation({
+          id: 'int:home_laptop',
+          name: 'Developer Laptop Workstation',
+          actionLabel: 'Code Remote Contract / Switch Laptop',
+          x: -7.5,
+          z: -4.8,
+          color: '#6366f1',
+          icon: '💻',
+        });
+
+        addProp(7.2, 0, -7.0, 4.2, 0.52, 4.6, darkWood);
+        addProp(7.2, 0.52, -6.9, 3.9, 0.28, 4.3, whiteMat, false);
+        addProp(7.2, 0.68, -5.8, 3.95, 0.18, 2.2, velvetTeal, false);
+        addProp(6.2, 0.82, -8.4, 1.3, 0.18, 0.65, whiteMat, false);
+        addProp(8.2, 0.82, -8.4, 1.3, 0.18, 0.65, whiteMat, false);
+        addProp(7.2, 0, -9.25, 4.4, 1.65, 0.25, darkWood, false);
+        addStation({
+          id: 'int:home_bed',
+          name: 'King-Size Master Bed',
+          actionLabel: 'Sleep & Restore 100% Energy + Health',
+          x: 7.2,
+          z: -3.8,
+          color: '#14b8a6',
+          icon: '🛏️',
+        });
+
+        addProp(10.6, 0, -1.8, 1.3, 2.8, 3.4, oakWood);
+        addStation({
+          id: 'int:home_wardrobe',
+          name: 'Walk-In Designer Wardrobe',
+          actionLabel: 'Change 3D Character Outfit & Drip',
+          x: 9.0,
+          z: -1.8,
+          color: '#ec4899',
+          icon: '👕',
+        });
+
+        addProp(2.6, 0, -9.8, 1.3, 1.6, 0.9, darkMetal);
+        addStation({
+          id: 'int:home_safe',
+          name: 'Personal Cash Safe & Residence Hub',
+          actionLabel: 'Manage Safe Cash & Home Upgrades',
+          x: 2.6,
+          z: -8.2,
+          color: '#f59e0b',
+          icon: '🔐',
+        });
+
+        addProp(10.8, 0.9, 4.2, 0.65, 1.85, 2.4, whiteMat);
+        addProp(10.44, 1.35, 4.2, 0.08, 0.95, 1.6, screenGreen, false);
+        addStation({
+          id: 'int:home_solar',
+          name: 'Solar Inverter & NEPA Meter Panel',
+          actionLabel: 'Pay NEPA Bill, Fuel Gen or Buy Solar',
+          x: 9.1,
+          z: 4.2,
+          color: '#10b981',
+          icon: '☀️',
+        });
+
+        addProp(-9.8, 0, 3.8, 1.6, 2.3, 1.4, silverMetal);
+        addStation({
+          id: 'int:home_fridge',
+          name: 'Smart Kitchen & Double Fridge',
+          actionLabel: 'Eat Fresh Home Meal (+Hunger & +Thirst)',
+          x: -8.0,
+          z: 3.8,
+          color: '#22d3ee',
+          icon: '🍽️',
+        });
+
+        addStation({
+          id: 'int:home_garage',
+          name: 'Gated 2-Car Garage Access',
+          actionLabel: 'Open Garage & Drive Car [G]',
+          x: 6.5,
+          z: 3.8,
+          color: '#38bdf8',
+          icon: '🚗',
+        });
+      }
       break;
     }
 
@@ -1322,6 +1854,17 @@ export function buildBuildingInterior(
     }
   }
 
+  const mansionFloorY = (x: number, z: number): number => {
+    if (x >= -3.6 && x <= 3.6 && z <= 1.5 && z >= -5.5) {
+      const t = (1.5 - z) / 7.0;
+      return 0.02 + Math.max(0, Math.min(1, t)) * 4.78;
+    }
+    if (z <= -5.5) {
+      return 4.8;
+    }
+    return 0.02;
+  };
+
   return {
     districtId,
     title: cfg.title,
@@ -1343,5 +1886,6 @@ export function buildBuildingInterior(
       minZ: -halfD + 0.85,
       maxZ: halfD - 0.85,
     },
+    floorY: isMansion ? mansionFloorY : undefined,
   };
 }

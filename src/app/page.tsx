@@ -57,6 +57,8 @@ import {
   SERVER_PLAYERS,
   OOC_CHATTER,
   SPAWN_POINTS,
+  REAL_ESTATE,
+  getSpawnPoints,
   BANK_VAULTS_CATALOG,
 } from '@/lib/gameState';
 import { RadialWheelModal } from '@/components/game/RadialWheelModal';
@@ -481,7 +483,7 @@ export default function LagosLifeGamePage() {
   // ==================== IN-WORLD 3D MISSION ENGINE ====================
   const handleStartMission = useCallback(
     (kind: JobKind) => {
-      const cityList = getDistrictsForCity(player.activeCity || 'lagos');
+      const cityList = getDistrictsForCity(player.activeCity || 'lagos', player.housing);
       const shitta = cityList.find((d) => d.id === 'shitta')!;
       const fleeca = cityList.find((d) => d.id === 'fleeca')!;
       const yaba = cityList.find((d) => d.id === 'yaba')!;
@@ -1761,6 +1763,92 @@ export default function LagosLifeGamePage() {
         });
         return;
       }
+      if (locationId === 'int:home_jacuzzi') {
+        runActionBar('RELAXING IN HEATED JACUZZI & SAUNA...', 1300, () => {
+          audioEngine.playUpNepa();
+          setVitals((v) => ({
+            ...v,
+            health: 100,
+            energy: 100,
+            stress: 0,
+            hygiene: 100,
+          }));
+          setMeText({ text: '* relaxes in heated jacuzzi & cedar sauna *', ts: Date.now() });
+          addNotification(
+            'Jacuzzi Spa & Cedar Sauna 🛁',
+            'Full Hydrotherapy: 100% Health, 100% Hygiene & 0 Stress restored!',
+            'success'
+          );
+        });
+        return;
+      }
+      if (locationId === 'int:home_cinema') {
+        runActionBar('STARTING 4K CINEMA SCREENING...', 1200, () => {
+          audioEngine.playClick();
+          setVitals((v) => ({
+            ...v,
+            energy: Math.min(100, v.energy + 40),
+            stress: Math.max(0, v.stress - 50),
+          }));
+          setMeText({ text: '* watches blockbuster film in private cinema *', ts: Date.now() });
+          addNotification(
+            'Private Cinema Lounge 🎬',
+            'Dolby Atmos Screening: -50 Stress & +40 Stamina boost!',
+            'success'
+          );
+        });
+        return;
+      }
+      if (locationId === 'int:home_bar') {
+        runActionBar('POURING VINTAGE COGNAC & CHAMPAGNE...', 1000, () => {
+          audioEngine.playEatFood();
+          setVitals((v) => ({
+            ...v,
+            energy: Math.min(100, v.energy + 35),
+            stress: Math.max(0, v.stress - 25),
+          }));
+          setMeText({ text: '* sips Armand de Brignac Champagne *', ts: Date.now() });
+          addNotification(
+            'Cognac & Champagne Bar 🍸',
+            'Sipped Ace of Spades Champagne: +35 Stamina & -25 Stress!',
+            'success'
+          );
+        });
+        return;
+      }
+      if (locationId === 'int:home_tv') {
+        runActionBar('WATCHING 8K LIVING ROOM THEATER...', 1100, () => {
+          audioEngine.playClick();
+          setVitals((v) => ({
+            ...v,
+            energy: Math.min(100, v.energy + 25),
+            stress: Math.max(0, v.stress - 30),
+          }));
+          setMeText({ text: '* watches 8K Smart TV lounge *', ts: Date.now() });
+          addNotification(
+            'Living Room Lounge 📺',
+            'Streamed live sports & Nollywood: -30 Stress!',
+            'success'
+          );
+        });
+        return;
+      }
+      if (locationId === 'int:home_rooftop') {
+        runActionBar('ACCESSING ROOFTOP SKY POOL & HELIPAD...', 1100, () => {
+          audioEngine.playUpNepa();
+          setMeText({ text: '* stands on penthouse rooftop overlooking the lagoon *', ts: Date.now() });
+          addNotification(
+            'Rooftop Terrace & Helipad 🚁',
+            'Panoramic Skyline View: Infinity Pool & Private Helicopter landing pad active!',
+            'info'
+          );
+        });
+        return;
+      }
+      if (locationId === 'int:home_vault') {
+        openBuildingModal('home', 'safe');
+        return;
+      }
       if (locationId === 'int:home_wardrobe' || locationId === 'int:clothing_rack') {
         setIsCustomizerOpen(true);
         return;
@@ -2074,7 +2162,7 @@ export default function LagosLifeGamePage() {
 
   const handleSetDistrictWaypoint = useCallback(
     (distId: LagosDistrict) => {
-      const cityList = getDistrictsForCity(player.activeCity || 'lagos');
+      const cityList = getDistrictsForCity(player.activeCity || 'lagos', player.housing);
       const d = cityList.find((item) => item.id === distId);
       if (!d) return;
       setWaypoint({
@@ -2450,7 +2538,7 @@ export default function LagosLifeGamePage() {
                   <MapPin size={11} className="text-teal-400" /> Fast-Travel / Spawn Locations
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {SPAWN_POINTS.map((sp) => (
+                  {getSpawnPoints(player.housing, player.activeCity).map((sp) => (
                     <button
                       key={sp.id}
                       onClick={() => {
@@ -2928,6 +3016,36 @@ export default function LagosLifeGamePage() {
           setIsSettingsOpen(false);
           setIsCharacterCreationOpen(true);
         }}
+        onSwitchHousing={(newHousing) => {
+          setPlayer((p) => ({
+            ...p,
+            housing: newHousing,
+          }));
+          const prop = REAL_ESTATE.find((r) => r.id === newHousing);
+          addNotification(
+            'Residence Switched 🏠',
+            `Active home set to ${prop?.name || newHousing}!`,
+            'success'
+          );
+        }}
+        onTeleportToHousing={(newHousing) => {
+          setPlayer((p) => ({
+            ...p,
+            housing: newHousing,
+          }));
+          const isMansion = newHousing === 'ikoyi-mansion';
+          const targetX = isMansion ? 73.5 : 77.5;
+          const targetZ = isMansion ? -38 : 50;
+          setTeleportRequest({ x: targetX, z: targetZ, ts: Date.now() });
+          setIsSettingsOpen(false);
+          const prop = REAL_ESTATE.find((r) => r.id === newHousing);
+          addNotification(
+            'Welcome Home! ⚡',
+            `Fast traveled to front gate of ${prop?.name || newHousing}!`,
+            'success'
+          );
+        }}
+
       />
 
       {/* Persistent AAA Auto-Save Indicator */}

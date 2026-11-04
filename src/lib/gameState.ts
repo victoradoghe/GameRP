@@ -547,6 +547,31 @@ export const SPAWN_POINTS: { id: string; label: string; x: number; z: number; ic
   { id: 'shitta', label: 'Amala Shitta / Garki', x: 0, z: 13, icon: '🍲' },
 ];
 
+export function getSpawnPoints(
+  housing?: string,
+  city: CityId = 'lagos'
+): { id: string; label: string; x: number; z: number; icon: string }[] {
+  const isMansion = housing === 'ikoyi-mansion';
+  return SPAWN_POINTS.map((sp) => {
+    if (sp.id === 'home') {
+      return {
+        ...sp,
+        label: isMansion
+          ? city === 'abuja'
+            ? 'Maitama Hills Billionaire Mega Mansion'
+            : 'Banana Island Billionaire Mega Mansion'
+          : city === 'abuja'
+          ? 'Your Abuja Residence (Maitama)'
+          : 'Your Lagos Residence',
+        icon: isMansion ? '🏰' : '🏠',
+        x: isMansion ? 73.5 : 77.5,
+        z: isMansion ? -38 : 50,
+      };
+    }
+    return sp;
+  });
+}
+
 export const PHONE_MODELS_CATALOG: PhoneModelSpec[] = [
   {
     id: 'tecno-phantom-v2',

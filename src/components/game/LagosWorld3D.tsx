@@ -1355,6 +1355,10 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
 
     // Portals for Billionaire Estate & Showroom Garage
     doorPositions.set('home_mansion' as any, { x: estateX - 4, z: estateZ + 3.0 });
+    addEntrancePortal('home_mansion' as any, estateX - 4, estateZ + 3.0, estateX - 4, estateZ + 8.0, '#facc15');
+    if (propsRef.current.housing === 'ikoyi-mansion') {
+      doorPositions.set('home', { x: estateX - 4, z: estateZ + 3.0 });
+    }
     doorPositions.set('home_garage' as any, { x: estateX + 11, z: estateZ + 3.2 });
     doorPositions.set('standard_garage' as any, { x: 70, z: 52 });
 
@@ -1966,6 +1970,19 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
         z: pState.z,
         heading: pState.heading,
       };
+
+      const nearMansion =
+        Math.hypot(pState.x - 73.5, pState.z - (-42)) < 8.0 ||
+        Math.hypot(pState.x - 73.5, pState.z - (-31)) < 8.0 ||
+        Math.hypot(pState.x - 77.5, pState.z - (-45)) < 8.0;
+
+      const effectiveHousing =
+        districtId === 'home'
+          ? nearMansion
+            ? 'ikoyi-mansion'
+            : (propsRef.current.housing || 'face-me-i-face-you')
+          : undefined;
+
       setDoorFade(true);
       audioEngine.playClick();
 
@@ -1975,7 +1992,11 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
         }
 
         outdoorGroup.visible = false;
-        activeInterior = buildBuildingInterior(districtId, propsRef.current.activeCity || 'lagos');
+        activeInterior = buildBuildingInterior(
+          districtId,
+          propsRef.current.activeCity || 'lagos',
+          effectiveHousing
+        );
         scene.add(activeInterior.group);
 
         pState.x = activeInterior.spawnX;
@@ -2081,13 +2102,15 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       }
 
       // Check Billionaire Mega Mansion entrance portal if standing near (77.5, -45)
-      const nearMansion = Math.hypot(pState.x - 73.5, pState.z - (-42)) < 4.5 || Math.hypot(pState.x - 73.5, pState.z - (-31)) < 4.5;
+      const nearMansion =
+        Math.hypot(pState.x - 73.5, pState.z - (-42)) < 5.5 ||
+        Math.hypot(pState.x - 73.5, pState.z - (-31)) < 5.5 ||
+        Math.hypot(pState.x - 77.5, pState.z - (-45)) < 6.0;
       if (nearMansion) {
-        const isOwner = propsRef.current.housing === 'ikoyi-mansion';
         return {
-          id: isOwner ? 'enter:home' : 'dynasty8_mansion',
-          name: isOwner ? 'Banana Island Billionaire Mega Mansion' : 'Banana Island Mega Mansion (For Sale)',
-          actionLabel: isOwner ? 'Enter Billionaire Mega Mansion (3D Interior)' : 'Purchase / Lease Estate (Dynasty 8)',
+          id: 'enter:home',
+          name: 'Banana Island Billionaire Mega Mansion & Compound',
+          actionLabel: 'Enter Billionaire Mega Mansion (2-Story 3D Interior) [E]',
         };
       }
 
@@ -2829,7 +2852,9 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
           clampToWorld(pState);
         }
 
-        const gy = activeInterior ? 0.02 : groundY(pState.x, pState.z);
+        const gy = activeInterior
+          ? (activeInterior.floorY ? activeInterior.floorY(pState.x, pState.z) : 0.02)
+          : groundY(pState.x, pState.z);
         if (!pState.grounded) {
           pState.vy -= 15 * dt;
           pState.y += pState.vy * dt;

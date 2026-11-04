@@ -4,6 +4,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import {
   User,
+  Home,
+  Building2,
+  Crown,
+  Warehouse,
   Sparkles,
   Dice5,
   Check,
@@ -29,7 +33,9 @@ import {
   CharacterAppearance,
   SocialClass,
   Vitals,
+  PropertySpec,
 } from '@/lib/types';
+import { REAL_ESTATE } from '@/lib/gameState';
 import { buildHumanoid, animateHumanoid, Humanoid } from './world/humanoid';
 import { audioEngine } from '@/lib/audioEngine';
 
@@ -156,7 +162,10 @@ export const CharacterCreationModal: React.FC<CharacterCreationModalProps> = ({
   onComplete,
   existingPlayer,
 }) => {
-  const [tab, setTab] = useState<'identity' | 'appearance' | 'wardrobe' | 'review'>('identity');
+  const [tab, setTab] = useState<'identity' | 'appearance' | 'wardrobe' | 'housing' | 'review'>('identity');
+  const [selectedHousing, setSelectedHousing] = useState<PropertySpec['id']>(
+    existingPlayer?.housing || 'ikoyi-mansion'
+  );
 
   // Identity State
   const [name, setName] = useState<string>(existingPlayer?.name || 'Sunday Okafor');
@@ -460,9 +469,9 @@ export const CharacterCreationModal: React.FC<CharacterCreationModalProps> = ({
       job: originSpec.title,
       isOnDuty: true,
       salary: selectedOrigin === 'nepo' ? 180000 : selectedOrigin === 'techbro' ? 120000 : 65000,
-      housing: selectedOrigin === 'nepo' ? 'lekki-duplex' : selectedOrigin === 'techbro' ? 'mainland-flat' : 'face-me-i-face-you',
+      housing: selectedHousing,
       rentDueDays: 14,
-      rentAmount: selectedOrigin === 'nepo' ? 250000 : 35000,
+      rentAmount: selectedHousing === 'ikoyi-mansion' ? 8500000 : selectedHousing === 'lekki-duplex' ? 1800000 : selectedHousing === 'mainland-flat' ? 350000 : 45000,
       inventory: {
         generator: true,
         generatorFuelLitres: 25,
@@ -478,10 +487,10 @@ export const CharacterCreationModal: React.FC<CharacterCreationModalProps> = ({
       ownedLaptops: ['thinkpad-x1'],
       nepaUnitsKwh: 80,
       nepaBillArrears: 0,
-      solarKw: selectedOrigin === 'nepo' ? 10 : selectedOrigin === 'techbro' ? 5 : 0,
+      solarKw: selectedHousing === 'ikoyi-mansion' ? 20 : selectedOrigin === 'nepo' ? 10 : selectedOrigin === 'techbro' ? 5 : 0,
       homeSafeCash: 50000,
       items: existingPlayer?.items?.length ? existingPlayer.items : [],
-      ownedVehicles: selectedOrigin === 'nepo' ? ['veh-brabus', 'veh-ducati'] : ['veh-okada'],
+      ownedVehicles: selectedHousing === 'ikoyi-mansion' ? ['veh-brabus', 'veh-ducati', 'veh-gle', 'veh-rolls'] : selectedOrigin === 'nepo' ? ['veh-brabus', 'veh-ducati'] : ['veh-okada'],
       ownedPlanes: [],
       transactions: [],
       musicTracksReleased: 0,
@@ -552,17 +561,17 @@ export const CharacterCreationModal: React.FC<CharacterCreationModalProps> = ({
         {/* Customization Controls Column */}
         <div className="lg:col-span-7 flex flex-col rounded-3xl bg-zinc-900/90 border border-white/10 p-5 shadow-2xl min-h-0 overflow-hidden">
           {/* Step Tabs */}
-          <div className="grid grid-cols-4 gap-1.5 bg-black/60 p-1 rounded-2xl border border-white/10 mb-4 shrink-0 text-xs font-bold">
+          <div className="grid grid-cols-5 gap-1 bg-black/60 p-1 rounded-2xl border border-white/10 mb-4 shrink-0 text-xs font-bold">
             <button
               onClick={() => {
                 audioEngine.playClick();
                 setTab('identity');
               }}
-              className={`py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
+              className={`py-2 px-2 rounded-xl flex items-center justify-center gap-1 transition-all ${
                 tab === 'identity' ? 'bg-teal-500 text-black font-black shadow-md' : 'text-zinc-400 hover:text-white'
               }`}
             >
-              <User size={14} />
+              <User size={13} />
               <span className="truncate">1. Identity</span>
             </button>
 
@@ -571,11 +580,11 @@ export const CharacterCreationModal: React.FC<CharacterCreationModalProps> = ({
                 audioEngine.playClick();
                 setTab('appearance');
               }}
-              className={`py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
+              className={`py-2 px-2 rounded-xl flex items-center justify-center gap-1 transition-all ${
                 tab === 'appearance' ? 'bg-teal-500 text-black font-black shadow-md' : 'text-zinc-400 hover:text-white'
               }`}
             >
-              <Scissors size={14} />
+              <Scissors size={13} />
               <span className="truncate">2. Physical</span>
             </button>
 
@@ -584,12 +593,25 @@ export const CharacterCreationModal: React.FC<CharacterCreationModalProps> = ({
                 audioEngine.playClick();
                 setTab('wardrobe');
               }}
-              className={`py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
+              className={`py-2 px-2 rounded-xl flex items-center justify-center gap-1 transition-all ${
                 tab === 'wardrobe' ? 'bg-teal-500 text-black font-black shadow-md' : 'text-zinc-400 hover:text-white'
               }`}
             >
-              <Shirt size={14} />
+              <Shirt size={13} />
               <span className="truncate">3. Attire</span>
+            </button>
+
+            <button
+              onClick={() => {
+                audioEngine.playClick();
+                setTab('housing');
+              }}
+              className={`py-2 px-2 rounded-xl flex items-center justify-center gap-1 transition-all ${
+                tab === 'housing' ? 'bg-amber-500 text-black font-black shadow-md' : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <Home size={13} />
+              <span className="truncate">4. Residence</span>
             </button>
 
             <button
@@ -597,12 +619,12 @@ export const CharacterCreationModal: React.FC<CharacterCreationModalProps> = ({
                 audioEngine.playClick();
                 setTab('review');
               }}
-              className={`py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
-                tab === 'review' ? 'bg-amber-500 text-black font-black shadow-md' : 'text-zinc-400 hover:text-white'
+              className={`py-2 px-2 rounded-xl flex items-center justify-center gap-1 transition-all ${
+                tab === 'review' ? 'bg-emerald-500 text-black font-black shadow-md' : 'text-zinc-400 hover:text-white'
               }`}
             >
-              <Award size={14} />
-              <span className="truncate">4. ID Card</span>
+              <Award size={13} />
+              <span className="truncate">5. ID Card</span>
             </button>
           </div>
 
@@ -708,6 +730,15 @@ export const CharacterCreationModal: React.FC<CharacterCreationModalProps> = ({
                           audioEngine.playClick();
                           setSelectedOrigin(orig.id);
                           setOutfitStyle(orig.defaultOutfit as any);
+                          if (orig.id === 'nepo') {
+                            setSelectedHousing('ikoyi-mansion');
+                          } else if (orig.id === 'techbro') {
+                            setSelectedHousing('mainland-flat');
+                          } else if (orig.id === 'returnee') {
+                            setSelectedHousing('lekki-duplex');
+                          } else {
+                            setSelectedHousing('face-me-i-face-you');
+                          }
                         }}
                         className={`p-3 rounded-2xl border text-left transition-all ${
                           selectedOrigin === orig.id
@@ -1098,9 +1129,9 @@ export const CharacterCreationModal: React.FC<CharacterCreationModalProps> = ({
                     </div>
 
                     <div className="p-2.5 rounded-xl bg-black/40 border border-white/5">
-                      <span className="text-[10px] text-zinc-400 block uppercase">Resident District</span>
+                      <span className="text-[10px] text-zinc-400 block uppercase">Home Residence</span>
                       <strong className="text-purple-300">
-                        {selectedOrigin === 'nepo' ? 'Lekki Phase 1' : selectedOrigin === 'techbro' ? 'Yaba Tech District' : 'Marina Waterfront'}
+                        {REAL_ESTATE.find((r) => r.id === selectedHousing)?.name || 'Your Residence'}
                       </strong>
                     </div>
                   </div>
