@@ -21,6 +21,9 @@ import { BennysCustomsModal } from '@/components/game/BennysCustomsModal';
 import { PedInteractionModal } from '@/components/game/PedInteractionModal';
 import { BuildingInteriorModal } from '@/components/game/BuildingInteriorModal';
 import { GameSettingsMenu, FpsCounter } from '@/components/game/GameSettingsMenu';
+import { CharacterCreationModal } from '@/components/game/CharacterCreationModal';
+import { GameMainMenu } from '@/components/game/GameMainMenu';
+import { AutoSaveIndicator } from '@/components/game/AutoSaveIndicator';
 import {
   PlayerStats,
   Vitals,
@@ -39,6 +42,7 @@ import {
   ChatLine,
   GraphicsSettings,
   BankVaultSpec,
+  AutoSaveData,
 } from '@/lib/types';
 import {
   INITIAL_LAPO_PLAYER,
@@ -217,6 +221,10 @@ export default function LagosLifeGamePage() {
   const [hudVisible, setHudVisible] = useState<boolean>(true);
   const [masterVolume, setMasterVolume] = useState<number>(85);
   const [musicVolume, setMusicVolume] = useState<number>(75);
+  const [isMainMenuOpen, setIsMainMenuOpen] = useState<boolean>(true);
+  const [isCharacterCreationOpen, setIsCharacterCreationOpen] = useState<boolean>(false);
+  const [isAutoSaving, setIsAutoSaving] = useState<boolean>(false);
+  const [hasSavedGame, setHasSavedGame] = useState<boolean>(false);
   const [isLoggedOut, setIsLoggedOut] = useState<boolean>(false);
   const [sessionStartedAt] = useState<number>(() => Date.now());
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
@@ -235,6 +243,8 @@ export default function LagosLifeGamePage() {
   const isDowned = vitals.health <= 0;
 
   const anyBlockingModal =
+    isMainMenuOpen ||
+    isCharacterCreationOpen ||
     isSettingsOpen ||
     isLoggedOut ||
     isInventoryOpen ||
@@ -295,9 +305,39 @@ export default function LagosLifeGamePage() {
     []
   );
 
-  // Load saved state safely
+  // Load saved state safely (supporting new v7 auto-save & legacy v5)
   useEffect(() => {
     try {
+      const v7Save = localStorage.getItem('lagos_life_autosave_v7');
+      if (v7Save) {
+        const parsed: AutoSaveData = JSON.parse(v7Save);
+        if (parsed.player) {
+          setPlayer({
+            ...INITIAL_LAPO_PLAYER,
+            ...parsed.player,
+            items: parsed.player.items?.length ? parsed.player.items : DEFAULT_INVENTORY_ITEMS,
+          });
+          setHasSavedGame(true);
+        }
+        if (parsed.vitals) {
+          setVitals({
+            ...INITIAL_VITALS,
+            ...parsed.vitals,
+            health: Math.max(25, parsed.vitals.health ?? 96),
+          });
+        }
+        if (typeof parsed.wantedStars === 'number') {
+          setWantedStars(parsed.wantedStars);
+        }
+        if (parsed.equippedItemId) {
+          setEquippedItemId(parsed.equippedItemId);
+        }
+        if (parsed.timestamp) {
+          setLastSavedAt(parsed.timestamp);
+        }
+        return;
+      }
+      // Fallback for v5 saves
       const savedPlayer = localStorage.getItem('lagos_life_3d_player_v5');
       const savedVitals = localStorage.getItem('lagos_life_3d_vitals_v5');
       if (savedPlayer) {
@@ -307,6 +347,7 @@ export default function LagosLifeGamePage() {
           ...parsed,
           items: parsed.items?.length ? parsed.items : DEFAULT_INVENTORY_ITEMS,
         });
+        setHasSavedGame(true);
       }
       if (savedVitals) {
         const parsedV = JSON.parse(savedVitals);
@@ -321,15 +362,46 @@ export default function LagosLifeGamePage() {
     }
   }, []);
 
-  // Persist state
+  // Universal Auto-Save Function
+  const triggerAutoSave = useCallback(
+    (customPlayer?: PlayerStats, customVitals?: Vitals) => {
+      try {
+        setIsAutoSaving(true);
+        const playerToSave = customPlayer || player;
+        const vitalsToSave = customVitals || vitals;
+        const saveData: AutoSaveData = {
+          version: 7,
+          timestamp: Date.now(),
+          player: playerToSave,
+          vitals: vitalsToSave,
+          wantedStars,
+          activeCity: playerToSave.activeCity || 'lagos',
+          equippedItemId,
+        };
+        localStorage.setItem('lagos_life_autosave_v7', JSON.stringify(saveData));
+        localStorage.setItem('lagos_life_3d_player_v5', JSON.stringify(playerToSave));
+        localStorage.setItem('lagos_life_3d_vitals_v5', JSON.stringify(vitalsToSave));
+        setHasSavedGame(true);
+        setTimeout(() => {
+          setIsAutoSaving(false);
+          setLastSavedAt(Date.now());
+        }, 400);
+      } catch (e) {
+        console.warn('Auto-save write error:', e);
+        setIsAutoSaving(false);
+      }
+    },
+    [player, vitals, wantedStars, equippedItemId]
+  );
+
+  // Background Auto-Save Loop: every 25 seconds when active in-game
   useEffect(() => {
-    try {
-      localStorage.setItem('lagos_life_3d_player_v5', JSON.stringify(player));
-      localStorage.setItem('lagos_life_3d_vitals_v5', JSON.stringify(vitals));
-    } catch (e) {
-      console.warn('LocalStorage write error:', e);
-    }
-  }, [player, vitals]);
+    if (isMainMenuOpen || isCharacterCreationOpen) return;
+    const interval = setInterval(() => {
+      triggerAutoSave();
+    }, 25000);
+    return () => clearInterval(interval);
+  }, [isMainMenuOpen, isCharacterCreationOpen, triggerAutoSave]);
 
   // Audio volume & Pause / Settings handlers
   const handleMasterVolumeChange = useCallback((vol: number) => {
@@ -343,26 +415,23 @@ export default function LagosLifeGamePage() {
   }, []);
 
   const handleSaveGame = useCallback(() => {
-    try {
-      localStorage.setItem('lagos_life_3d_player_v5', JSON.stringify(player));
-      localStorage.setItem('lagos_life_3d_vitals_v5', JSON.stringify(vitals));
-      setLastSavedAt(Date.now());
-      audioEngine.playCashEarn();
-      addNotification('Game Saved', 'Character status, inventory & bank balance saved.', 'success');
-    } catch {
-      addNotification('Save Warning', 'Local browser storage could not be updated.', 'warning');
-    }
-  }, [player, vitals, addNotification]);
+    triggerAutoSave();
+    audioEngine.playCashEarn();
+    addNotification('Game Saved', 'Auto-save updated: character status, inventory & bank balance.', 'success');
+  }, [triggerAutoSave, addNotification]);
 
   const handleLogout = useCallback(() => {
+    triggerAutoSave();
     setIsSettingsOpen(false);
+    setIsMainMenuOpen(true);
     setIsLoggedOut(true);
     audioEngine.playCameraClick();
-    addNotification('Logged Out', 'Returned to Main Story Title. Progress safely stored.', 'info');
-  }, [addNotification]);
+    addNotification('Returned to Title', 'Game auto-saved. Welcome back to Main Menu.', 'info');
+  }, [triggerAutoSave, addNotification]);
 
   const handleResetCharacter = useCallback(() => {
     try {
+      localStorage.removeItem('lagos_life_autosave_v7');
       localStorage.removeItem('lagos_life_3d_player_v5');
       localStorage.removeItem('lagos_life_3d_vitals_v5');
     } catch {}
@@ -370,7 +439,8 @@ export default function LagosLifeGamePage() {
     setVitals(INITIAL_VITALS);
     setWantedStars(0);
     setEquippedItemId(null);
-    setLastSavedAt(Date.now());
+    setHasSavedGame(false);
+    setLastSavedAt(null);
     setIsSettingsOpen(false);
     audioEngine.playVehicleIgnition();
     addNotification('Character Reset', 'New citizen identity spawned at Eko Central Hospital.', 'info');
@@ -2010,6 +2080,7 @@ export default function LagosLifeGamePage() {
       {/* 3D WebGL Open-World City & Articulated Playable Character */}
       <LagosWorld3D
         outfit={player.outfit}
+        appearance={player.appearance}
         activeCity={player.activeCity || 'lagos'}
         solarKw={player.solarKw || 0}
         timeOfDay={timeOfDay}
@@ -2538,7 +2609,33 @@ export default function LagosLifeGamePage() {
         player={player}
         onSave={(updated) => {
           setPlayer(updated);
-          addNotification('Outfit Updated', '3D appearance updated!', 'success');
+          triggerAutoSave(updated);
+          addNotification('Outfit Updated', '3D appearance updated & auto-saved!', 'success');
+        }}
+      />
+
+      {/* AAA Character Creation Studio (Age, Gender, 3D Melanin Anatomy, Traditional Yoruba & Igbo Attire) */}
+      <CharacterCreationModal
+        isOpen={isCharacterCreationOpen}
+        onClose={() => setIsCharacterCreationOpen(false)}
+        existingPlayer={player}
+        onComplete={(newPlayer, newVitals) => {
+          setPlayer(newPlayer);
+          let mergedVitals = vitals;
+          if (newVitals) {
+            mergedVitals = { ...vitals, ...newVitals };
+            setVitals(mergedVitals);
+          }
+          triggerAutoSave(newPlayer, mergedVitals);
+          setIsCharacterCreationOpen(false);
+          setIsMainMenuOpen(false);
+          setIsLoggedOut(false);
+          audioEngine.playVehicleIgnition();
+          addNotification(
+            'Citizen Registered!',
+            `Welcome to ${newPlayer.activeCity === 'abuja' ? 'Abuja FCT' : 'Lagos State'}, ${newPlayer.name}!`,
+            'success'
+          );
         }}
       />
 
@@ -2747,7 +2844,7 @@ export default function LagosLifeGamePage() {
       {/* GTA IV / GTA V Style Settings & Pause Menu */}
       <GameSettingsMenu
         isOpen={isSettingsOpen}
-        fromTitleScreen={isLoggedOut}
+        fromTitleScreen={isMainMenuOpen || isLoggedOut}
         onResume={() => setIsSettingsOpen(false)}
         player={player}
         vitals={vitals}
@@ -2789,204 +2886,44 @@ export default function LagosLifeGamePage() {
         }}
         onOpenCustomizer={() => {
           setIsSettingsOpen(false);
-          setIsCustomizerOpen(true);
+          setIsCharacterCreationOpen(true);
         }}
       />
 
-      {/* GTA IV / GTA V Style Main Title Screen when Logged Out */}
-      {isLoggedOut && (
-        <div className="fixed inset-0 z-[120] bg-black/95 flex flex-col justify-between p-6 sm:p-12 select-none backdrop-blur-md animate-fade-in">
-          {/* Top Header / Branding */}
-          <div className="flex items-center justify-between border-b border-amber-500/30 pb-4">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center font-black text-black text-2xl shadow-xl shadow-amber-500/20">
-                IV
-              </div>
-              <div>
-                <h1 className="text-xl sm:text-2xl font-black uppercase tracking-[0.25em] text-white flex items-center gap-3">
-                  NoPixel <span className="text-amber-400">Grand Theft V</span>
-                  <span className="text-[10px] font-mono font-bold tracking-normal text-amber-300/90 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">
-                    Eko & Abuja Edition
-                  </span>
-                </h1>
-                <p className="text-[11px] text-zinc-400 font-mono tracking-wider mt-0.5">
-                  Three.js 3D Open World Roleplay • Lagos State & FCT Simulation
-                </p>
-              </div>
-            </div>
+      {/* Persistent AAA Auto-Save Indicator */}
+      <AutoSaveIndicator
+        isSaving={isAutoSaving}
+        lastSavedAt={lastSavedAt}
+        onManualSave={triggerAutoSave}
+      />
 
-            <div className="hidden sm:flex items-center gap-3 text-right">
-              <div>
-                <div className="text-[10px] font-mono uppercase text-zinc-500 font-bold">Online Status</div>
-                <div className="text-xs font-mono font-semibold text-emerald-400 flex items-center justify-end gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
-                  EKO-SERVER-01 (64 / 64)
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Central Menu & Character Profile */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 my-auto max-w-6xl w-full mx-auto items-center py-6">
-            <div className="lg:col-span-7 space-y-3">
-              <div className="text-xs font-mono uppercase tracking-[0.2em] text-amber-400/80 font-bold mb-2">
-                • Main Story & Session Menu
-              </div>
-
-              <button
-                onClick={() => {
-                  audioEngine.playVehicleIgnition();
-                  setIsLoggedOut(false);
-                }}
-                className="w-full text-left p-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black uppercase tracking-wider text-base sm:text-lg flex items-center justify-between transition-all transform hover:scale-[1.01] shadow-xl shadow-amber-500/20 group"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="w-8 h-8 rounded-lg bg-black/20 flex items-center justify-center font-mono text-sm font-bold">▶</span>
-                  <div>
-                    <div>Resume Story / Spawn In City</div>
-                    <div className="text-xs font-normal opacity-85 normal-case">Continue with {player.name} in {player.activeCity === 'abuja' ? 'Abuja Central' : 'Lagos Marina'}</div>
-                  </div>
-                </div>
-                <span className="text-xl group-hover:translate-x-1 transition-transform">→</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  audioEngine.playClick();
-                  setIsSettingsOpen(true);
-                }}
-                className="w-full text-left p-4 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 hover:border-amber-400/60 text-white font-bold uppercase tracking-wider text-sm sm:text-base flex items-center justify-between transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center font-mono text-amber-400 text-sm">⚙</span>
-                  <div>
-                    <div>Settings & Resolution Scaler</div>
-                    <div className="text-xs font-normal text-zinc-400 normal-case">Configure 50%–150% resolution, audio volume, keybinds</div>
-                  </div>
-                </div>
-                <span className="text-zinc-500 font-mono">GTA IV / V</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  audioEngine.playClick();
-                  setIsCustomizerOpen(true);
-                }}
-                className="w-full text-left p-4 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 hover:border-amber-400/60 text-white font-bold uppercase tracking-wider text-sm sm:text-base flex items-center justify-between transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center font-mono text-cyan-400 text-sm">👔</span>
-                  <div>
-                    <div>Suburban Clothing & Wardrobe</div>
-                    <div className="text-xs font-normal text-zinc-400 normal-case">Custom fit, sneakers, Agbada & accessories</div>
-                  </div>
-                </div>
-                <span className="text-zinc-500 font-mono">Wardrobe</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  audioEngine.playClick();
-                  setIsHelpOpen(true);
-                }}
-                className="w-full text-left p-4 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 hover:border-amber-400/60 text-white font-bold uppercase tracking-wider text-sm sm:text-base flex items-center justify-between transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center font-mono text-emerald-400 text-sm">📖</span>
-                  <div>
-                    <div>How to Play & Roleplay Guide</div>
-                    <div className="text-xs font-normal text-zinc-400 normal-case">Controls, flight simulator, jobs & mobile device guide</div>
-                  </div>
-                </div>
-                <span className="text-zinc-500 font-mono">Guide</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  if (typeof window !== 'undefined' && window.confirm('Start a new character life? Current progress will be reset to default.')) {
-                    handleResetCharacter();
-                    setIsLoggedOut(false);
-                  }
-                }}
-                className="w-full text-left p-3.5 rounded-xl bg-red-950/40 hover:bg-red-900/40 border border-red-700/40 hover:border-red-500/70 text-red-200 font-semibold uppercase tracking-wider text-xs sm:text-sm flex items-center justify-between transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="w-8 h-8 rounded-lg bg-red-900/40 flex items-center justify-center font-mono text-red-300 text-sm">↺</span>
-                  <div>
-                    <div>Start New Citizen Life</div>
-                    <div className="text-[11px] text-red-400/80 normal-case">Reset character to newcomer citizen state</div>
-                  </div>
-                </div>
-                <span className="text-red-400 font-mono text-xs">Reset</span>
-              </button>
-            </div>
-
-            {/* Character Snapshot Card */}
-            <div className="lg:col-span-5 bg-gradient-to-b from-zinc-900/90 to-zinc-950/95 border border-amber-500/30 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-2xl pointer-events-none" />
-              <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-amber-400 font-bold mb-4">
-                Saved Citizen Profile
-              </div>
-
-              <div className="flex items-center gap-4 mb-5">
-                <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border-2 border-amber-400/50 flex items-center justify-center text-3xl shadow-inner">
-                  👤
-                </div>
-                <div>
-                  <h3 className="text-xl font-black text-white">{player.name}</h3>
-                  <div className="text-xs font-mono text-amber-300 uppercase tracking-wide">
-                    {player.job || 'Freelance Citizen'}
-                  </div>
-                  <div className="text-[11px] font-mono text-zinc-400 mt-0.5">
-                    ID: #{player.id || 'NIG-7734'} • {player.activeCity?.toUpperCase() || 'LAGOS'}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 mb-5">
-                <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800">
-                  <div className="text-[10px] font-mono uppercase text-zinc-500">Cash On Hand</div>
-                  <div className="text-base font-black text-emerald-400 font-mono">
-                    ₦{player.cash.toLocaleString()}
-                  </div>
-                </div>
-                <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800">
-                  <div className="text-[10px] font-mono uppercase text-zinc-500">Fleeca Bank</div>
-                  <div className="text-base font-black text-cyan-400 font-mono">
-                    ₦{player.bankBalance.toLocaleString()}
-                  </div>
-                </div>
-                <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800">
-                  <div className="text-[10px] font-mono uppercase text-zinc-500">Street Cred</div>
-                  <div className="text-base font-black text-purple-400 font-mono">
-                    {vitals.streetCred} / 100
-                  </div>
-                </div>
-                <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800">
-                  <div className="text-[10px] font-mono uppercase text-zinc-500">Wanted Level</div>
-                  <div className="text-base font-black text-amber-400 font-mono">
-                    {wantedStars > 0 ? `${wantedStars} ★` : 'Clean'}
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] font-mono text-amber-300">
-                💡 <span className="font-bold">Tip:</span> Use the Settings Menu to adjust Resolution Scale from 50% up to 150% to optimize FPS on your display.
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Bar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between border-t border-zinc-800 pt-4 text-xs font-mono text-zinc-500 gap-2">
-            <div>GTA IV / V Pause System • Build 2026.11 • WebGL2 + Three.js Engine</div>
-            <div className="flex items-center gap-4">
-              <span>Resolution: {Math.round((graphicsSettings.resolutionScale || 1) * 100)}%</span>
-              <span>Audio: {isAudioMuted ? 'Muted' : `${masterVolume}%`}</span>
-              <span>FOV: {graphicsSettings.fov || 60}°</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Professional Starting Main Menu */}
+      <GameMainMenu
+        isOpen={isMainMenuOpen || isLoggedOut}
+        player={player}
+        vitals={vitals}
+        lastSavedAt={lastSavedAt}
+        hasSavedGame={hasSavedGame}
+        graphicsSettings={graphicsSettings}
+        isAudioMuted={isAudioMuted}
+        masterVolume={masterVolume}
+        onResumeGame={() => {
+          setIsMainMenuOpen(false);
+          setIsLoggedOut(false);
+        }}
+        onOpenCharacterCreator={() => {
+          setIsCharacterCreationOpen(true);
+        }}
+        onOpenSettings={() => {
+          setIsSettingsOpen(true);
+        }}
+        onOpenHelp={() => {
+          setIsHelpOpen(true);
+        }}
+        onResetGame={handleResetCharacter}
+        onToggleAudioMute={handleToggleMute}
+        onChangeMasterVolume={handleMasterVolumeChange}
+      />
     </main>
   );
 }

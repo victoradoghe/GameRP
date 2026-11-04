@@ -1,4 +1,4 @@
-export type SocialClass = 'nepo' | 'lapo';
+export type SocialClass = 'nepo' | 'lapo' | 'techbro' | 'returnee';
 export type CityId = 'lagos' | 'abuja';
 export type PhoneOS = 'ios' | 'android';
 
@@ -203,11 +203,49 @@ export interface RandomLifeEvent {
   }[];
 }
 
+export type Gender = 'male' | 'female' | 'nonbinary' | 'non-binary';
+export type HairStyle = 'fade' | 'afro' | 'braids' | 'dreads' | 'waves' | 'bob' | 'buzz' | 'bald';
+export type BodyBuild = 'slim' | 'athletic' | 'muscular' | 'heavy';
+export type FacialHair = 'none' | 'stubble' | 'goatee' | 'beard';
+
+export interface CharacterAppearance {
+  gender: Gender;
+  age: number;
+  build: BodyBuild;
+  skinTone: string;
+  hairStyle: HairStyle;
+  hairColor: string;
+  facialHair?: FacialHair;
+  outfitStyle: 'agbada' | 'senator' | 'street' | 'techbro' | 'drip' | 'casual';
+  shirtColor: string;
+  pantsColor: string;
+  hat: 'none' | 'cap' | 'sunglasses' | 'fila' | 'fedora';
+  glasses?: 'none' | 'sunglasses' | 'optical' | 'gold_rim';
+  necklace?: 'none' | 'gold_chain' | 'pearls' | 'silver_chain';
+  customGlbUrl?: string;
+}
+
+export interface AutoSaveData {
+  version?: number;
+  player: PlayerStats;
+  vitals: Vitals;
+  wantedStars: number;
+  timeOfDay?: number;
+  activeCity: CityId;
+  savedAt?: number;
+  timestamp?: number;
+  equippedItemId?: string | null;
+  slotName?: string;
+}
+
 export interface PlayerStats {
   id: string;
   stateId: number;
   phoneNumber: string;
   name: string;
+  gender?: Gender;
+  age?: number;
+  appearance?: CharacterAppearance;
   tagline: string;
   origin: SocialClass;
   cash: number;

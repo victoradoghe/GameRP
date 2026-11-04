@@ -18,6 +18,7 @@ import {
   LagosDistrict,
   GraphicsSettings,
   JobKind,
+  CharacterAppearance,
 } from '@/lib/types';
 import { DISTRICTS, getDistrictsForCity, VEHICLES_CATALOG, ATM_SPOTS } from '@/lib/gameState';
 import {
@@ -44,6 +45,7 @@ export type VehicleAction = 'enter_exit' | 'seatbelt' | 'lights' | 'siren';
 
 export interface LagosWorld3DProps {
   outfit: PlayerStats['outfit'];
+  appearance?: CharacterAppearance;
   activeCity?: CityId;
   solarKw?: number;
   graphicsSettings?: GraphicsSettings;
@@ -1550,11 +1552,22 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
 
     // ---------- Playable 3D Character (Added directly to scene so it works indoors & outdoors!) ----------
     const P0 = propsRef.current;
+    const app = P0.appearance;
     const player = buildHumanoid({
-      shirt: P0.outfit.color,
-      pants: P0.outfit.pants ?? '#1e293b',
-      skin: P0.outfit.skin ?? '#6d4023',
-      hat: P0.outfit.hat,
+      shirt: app?.shirtColor ?? P0.outfit.color,
+      pants: app?.pantsColor ?? P0.outfit.pants ?? '#1e293b',
+      skin: app?.skinTone ?? P0.outfit.skin ?? '#6d4023',
+      hat: (app?.hat ?? P0.outfit.hat) as any,
+      glasses: app?.glasses,
+      necklace: app?.necklace,
+      gender: app?.gender,
+      age: app?.age,
+      build: app?.build,
+      hairStyle: app?.hairStyle,
+      hairColor: app?.hairColor,
+      facialHair: app?.facialHair,
+      outfitStyle: (app?.outfitStyle ?? P0.outfit.style) as any,
+      customGlbUrl: app?.customGlbUrl,
       castShadow: true,
     });
     player.root.rotation.order = 'YXZ';
@@ -2152,11 +2165,13 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
         meLabel = { sprite: s, until: performance.now() + 6500 };
       },
       setOutfit: (o) => {
+        const a = propsRef.current.appearance;
         applyOutfit(player, {
-          shirt: o.color,
-          pants: o.pants ?? '#1e293b',
-          skin: o.skin ?? '#6d4023',
-          hat: o.hat,
+          shirt: a?.shirtColor ?? o.color,
+          pants: a?.pantsColor ?? o.pants ?? '#1e293b',
+          skin: a?.skinTone ?? o.skin ?? '#6d4023',
+          hair: a?.hairColor,
+          hat: (a?.hat ?? o.hat) as any,
         });
       },
       enterInterior: enterInteriorRoom,
