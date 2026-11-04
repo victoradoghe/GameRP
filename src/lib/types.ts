@@ -284,10 +284,30 @@ export interface PlayerStats {
   homeSafeCash?: number;
   items: InventoryItem[];
   ownedVehicles: string[];
+  garageVehicles?: string[]; // IDs of vehicles currently parked in physical property garage
+  ownedProperties?: string[]; // IDs of purchased properties
   ownedPlanes?: string[];
   transactions?: BankTransaction[];
   musicTracksReleased: number;
   fansCount: number;
+}
+
+export interface PropertySpec {
+  id: 'squatting' | 'face-me-i-face-you' | 'mainland-flat' | 'lekki-duplex' | 'ikoyi-mansion';
+  name: string;
+  category: 'bedsit' | 'flat' | 'condo' | 'villa' | 'mansion';
+  district: string;
+  rent: number;
+  buyPrice: number;
+  deposit: number;
+  credReq: number;
+  comfort: number;
+  garageCapacity: number;
+  hasUpstairs: boolean;
+  location: { x: number; z: number; blockX: number; blockZ: number };
+  amenities: string[];
+  badge: string;
+  roomsDescription?: string;
 }
 
 export type LagosDistrict =

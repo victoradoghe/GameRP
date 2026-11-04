@@ -20,6 +20,7 @@ import { NoPixelCityMapModal } from '@/components/game/NoPixelCityMapModal';
 import { BennysCustomsModal } from '@/components/game/BennysCustomsModal';
 import { PedInteractionModal } from '@/components/game/PedInteractionModal';
 import { BuildingInteriorModal } from '@/components/game/BuildingInteriorModal';
+import { PropertyGarageModal } from '@/components/game/PropertyGarageModal';
 import { GameSettingsMenu, FpsCounter } from '@/components/game/GameSettingsMenu';
 import { CharacterCreationModal } from '@/components/game/CharacterCreationModal';
 import { GameMainMenu } from '@/components/game/GameMainMenu';
@@ -203,6 +204,7 @@ export default function LagosLifeGamePage() {
   const [activePedName, setActivePedName] = useState<string | null>(null);
   const [activeBuildingId, setActiveBuildingId] = useState<LagosDistrict | null>(null);
   const [buildingModalSection, setBuildingModalSection] = useState<string | undefined>(undefined);
+  const [isGarageOpen, setIsGarageOpen] = useState<boolean>(false);
 
   // GTA VI Item Wheel, Graphics/Resolution Settings & Multi-Bank Vault Heist State
   const [isItemWheelOpen, setIsItemWheelOpen] = useState<boolean>(false);
@@ -249,6 +251,7 @@ export default function LagosLifeGamePage() {
     isLoggedOut ||
     isInventoryOpen ||
     isItemWheelOpen ||
+    isGarageOpen ||
     isRadialOpen ||
     isScoreboardOpen ||
     isHeistOpen ||
@@ -1768,6 +1771,10 @@ export default function LagosLifeGamePage() {
         openBuildingModal('home', locationId.slice(9));
         return;
       }
+      if (locationId === 'int:home_garage' || locationId === 'garage') {
+        setIsGarageOpen(true);
+        return;
+      }
 
       // 3. COMPUTER VILLAGE / BANEX TECH STORE 3D STATIONS
       if (locationId === 'int:cv_ios') {
@@ -2105,6 +2112,10 @@ export default function LagosLifeGamePage() {
         meText={meText}
         graphicsSettings={graphicsSettings}
         activeMissionJobKind={activeMission?.jobKind ?? null}
+        housing={player.housing}
+        ownedVehicles={player.ownedVehicles}
+        garageVehicles={player.garageVehicles}
+        onOpenGarage={() => setIsGarageOpen(true)}
         onInteract={handleInteract}
         onRefuelRequest={handleRefuelRequest}
         onMissionReached={handleMissionReached}
@@ -2781,11 +2792,34 @@ export default function LagosLifeGamePage() {
         onOpenCustomizer={() => setIsCustomizerOpen(true)}
         onOpenInventory={() => setIsInventoryOpen(true)}
         onOpenBennys={() => setIsBennysOpen(true)}
+        onOpenGarageModal={() => setIsGarageOpen(true)}
         onFlyToCity={handleFlyToCity}
         vaultCamsDisabled={vaultCamsDisabled}
         onDisableCameras={handleDisableVaultCameras}
         onBreachVault={handleBreachVault}
         onSpawnVehicle={(id) => setSpawnVehicleRequest({ id, timestamp: Date.now() })}
+      />
+
+      {/* Property Garage & Showroom Vehicle Bays Modal */}
+      <PropertyGarageModal
+        isOpen={isGarageOpen}
+        onClose={() => setIsGarageOpen(false)}
+        housing={player.housing}
+        ownedVehicles={player.ownedVehicles || []}
+        garageVehicles={player.garageVehicles}
+        onDriveVehicle={(vehicleId) => {
+          setSpawnVehicleRequest({ id: vehicleId, timestamp: Date.now() });
+          setIsGarageOpen(false);
+          addNotification('Garage Bay Open', 'Drove vehicle out from property garage!', 'success');
+        }}
+        onUpdateGarageVehicles={(newGarageVehicles) => {
+          setPlayer((prev) => {
+            const updated = { ...prev, garageVehicles: newGarageVehicles };
+            triggerAutoSave(updated);
+            return updated;
+          });
+        }}
+        onAddNotification={addNotification}
       />
 
       {/* Benny's Original Motorworks & Ron Petrol Service Bay */}

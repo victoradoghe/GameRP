@@ -21,6 +21,17 @@ import {
   AlertTriangle,
   Shirt,
   Wrench,
+  Warehouse,
+  Bath,
+  Tv,
+  Waves,
+  Film,
+  Coffee,
+  Utensils,
+  Layers,
+  Crown,
+  Wine,
+  Key,
 } from 'lucide-react';
 import {
   PlayerStats,
@@ -29,6 +40,7 @@ import {
   CityId,
   JobKind,
   BankVaultSpec,
+  PropertySpec,
 } from '@/lib/types';
 import {
   PHONE_MODELS_CATALOG,
@@ -66,6 +78,7 @@ interface BuildingInteriorModalProps {
   onDisableCameras?: (bankId: BankVaultSpec['id']) => void;
   onBreachVault?: (bankId: BankVaultSpec['id']) => void;
   onSpawnVehicle?: (vehicleId: string) => void;
+  onOpenGarageModal?: () => void;
 }
 
 const BANK_CASES = [
@@ -125,11 +138,13 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
   onDisableCameras,
   onBreachVault,
   onSpawnVehicle,
+  onOpenGarageModal,
 }) => {
   const [techTab, setTechTab] = useState<'phones' | 'laptops' | 'os_compare'>('phones');
   const [phoneOsFilter, setPhoneOsFilter] = useState<'all' | 'ios' | 'android'>('all');
   const [mallTab, setMallTab] = useState<'groceries' | 'solar' | 'luxury' | 'realestate'>('groceries');
   const [bankCaseIdx, setBankCaseIdx] = useState<number>(0);
+  const [mansionFloor, setMansionFloor] = useState<'ground' | 'upstairs' | 'garage'>('ground');
 
   useEffect(() => {
     if (!initialSection) {
@@ -199,42 +214,86 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
 
   // ==================== 1. PLAYER HOUSE / RESIDENCE INTERIOR ====================
   if (buildingId === 'home') {
-    const houseObj =
+    const houseObj: PropertySpec =
       REAL_ESTATE.find((r) => r.id === player.housing) || REAL_ESTATE[1];
+
+    const isBillionaire = houseObj.id === 'ikoyi-mansion';
+    const isDuplex = houseObj.id === 'lekki-duplex';
+    const isFlat = houseObj.id === 'mainland-flat';
+    const isFaceMe = houseObj.id === 'face-me-i-face-you' || houseObj.id === 'squatting';
+    const garageCap = houseObj.garageCapacity || 2;
+    const parkedCount = Math.min((player.garageVehicles?.length || (player.ownedVehicles || []).length), garageCap);
 
     return (
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in select-none"
+        className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-fade-in select-none"
         onClick={onClose}
       >
         <div
-          className="w-full max-w-3xl bg-[#090d16] border border-teal-500/35 rounded-3xl overflow-hidden shadow-[0_25px_90px_rgba(0,0,0,0.9)] text-white flex flex-col max-h-[88vh]"
+          className={`w-full max-w-4xl bg-[#090d16] border rounded-3xl overflow-hidden shadow-[0_25px_90px_rgba(0,0,0,0.95)] text-white flex flex-col max-h-[90vh] ${
+            isBillionaire
+              ? 'border-amber-500/50 shadow-amber-500/15'
+              : 'border-teal-500/35 shadow-teal-500/10'
+          }`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Interior Header */}
-          <div className="px-6 py-4 bg-gradient-to-r from-teal-950/80 via-zinc-900 to-zinc-900 border-b border-white/10 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-teal-500/20 border border-teal-400/40 flex items-center justify-center text-teal-300">
-                <Home size={22} />
+          <div
+            className={`px-6 py-4 border-b flex items-center justify-between ${
+              isBillionaire
+                ? 'bg-gradient-to-r from-amber-950/90 via-zinc-900 to-zinc-900 border-amber-500/40'
+                : 'bg-gradient-to-r from-teal-950/80 via-zinc-900 to-zinc-900 border-white/10'
+            }`}
+          >
+            <div className="flex items-center gap-3.5">
+              <div
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl border shadow-lg ${
+                  isBillionaire
+                    ? 'bg-amber-500/25 border-amber-400/60 text-amber-300'
+                    : 'bg-teal-500/20 border-teal-400/40 text-teal-300'
+                }`}
+              >
+                {isBillionaire ? <Crown size={24} /> : <Home size={22} />}
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 rounded bg-teal-500/20 text-teal-300 font-bold">
-                    INSIDE YOUR HOME • {currentCity.toUpperCase()}
+                  <span
+                    className={`text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 rounded font-black ${
+                      isBillionaire
+                        ? 'bg-amber-500/30 text-amber-300 border border-amber-500/40'
+                        : 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
+                    }`}
+                  >
+                    {isBillionaire
+                      ? '★ BANANA ISLAND BILLIONAIRE MEGA MANSION'
+                      : isDuplex
+                      ? 'VI WATERFRONT LUXURY PENTHOUSE'
+                      : isFlat
+                      ? 'YABA TECH CORRIDOR MODERN FLAT'
+                      : 'MAINLAND BUDGET RESIDENCE'}
                   </span>
                   <span className="text-[10px] font-mono text-zinc-400">
-                    Comfort {houseObj.comfort}/100
+                    Comfort {houseObj.comfort}/100 • {garageCap}-Car Garage
                   </span>
                 </div>
-                <h2 className="text-base font-black tracking-tight text-white mt-0.5">
-                  {currentCity === 'abuja'
-                    ? `Maitama Residence — ${houseObj.name}`
-                    : houseObj.name}
+                <h2 className="text-base sm:text-lg font-black tracking-tight text-white mt-0.5 flex items-center gap-2">
+                  <span>{currentCity === 'abuja' ? `Maitama Hills — ${houseObj.name}` : houseObj.name}</span>
                 </h2>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
+              {onOpenGarageModal && (
+                <button
+                  onClick={() => {
+                    onClose();
+                    onOpenGarageModal();
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500 border border-amber-500/40 text-xs font-bold text-amber-300 hover:text-black flex items-center gap-1.5 transition-colors"
+                >
+                  <Warehouse size={14} /> Garage ({parkedCount}/{garageCap})
+                </button>
+              )}
               {onStepOutside && (
                 <button
                   onClick={() => {
@@ -248,17 +307,56 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
               )}
               <button
                 onClick={onClose}
-                className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-teal-500 text-xs font-bold text-zinc-200 hover:text-black flex items-center gap-1.5 transition-colors"
+                className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-zinc-200 transition-colors"
               >
-                <X size={14} /> Back to 3D Room
+                <X size={14} />
               </button>
             </div>
           </div>
 
+          {/* Billionaire Multi-Level Floor Navigation Tab */}
+          {isBillionaire && (
+            <div className="px-6 py-2 bg-black/60 border-b border-amber-500/20 flex items-center gap-2">
+              <span className="text-[10px] font-mono uppercase text-amber-400/80 font-bold mr-2">
+                • Estate Navigation:
+              </span>
+              <button
+                onClick={() => setMansionFloor('ground')}
+                className={`px-3 py-1.5 rounded-xl font-mono text-xs font-bold flex items-center gap-1.5 transition-all ${
+                  mansionFloor === 'ground'
+                    ? 'bg-amber-500 text-black shadow-md shadow-amber-500/30'
+                    : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Layers size={13} /> Ground Floor (Foyer, Living &amp; Chef Kitchen)
+              </button>
+              <button
+                onClick={() => setMansionFloor('upstairs')}
+                className={`px-3 py-1.5 rounded-xl font-mono text-xs font-bold flex items-center gap-1.5 transition-all ${
+                  mansionFloor === 'upstairs'
+                    ? 'bg-amber-500 text-black shadow-md shadow-amber-500/30'
+                    : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Crown size={13} /> Upstairs Luxury Suites &amp; Jacuzzi Spa
+              </button>
+              <button
+                onClick={() => setMansionFloor('garage')}
+                className={`px-3 py-1.5 rounded-xl font-mono text-xs font-bold flex items-center gap-1.5 transition-all ${
+                  mansionFloor === 'garage'
+                    ? 'bg-amber-500 text-black shadow-md shadow-amber-500/30'
+                    : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Warehouse size={13} /> 8-Car Showroom Garage
+              </button>
+            </div>
+          )}
+
           <div className="p-5 overflow-y-auto space-y-4">
-            {/* Live Home Power / Solar / NEPA / Generator Banner */}
+            {/* Live Power / Electricity Status Banner */}
             <div
-              className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+              className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                 solarKw > 0
                   ? 'bg-emerald-950/50 border-emerald-500/40'
                   : hasHomePower
@@ -272,15 +370,15 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
                 </div>
                 <div>
                   <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-300 block">
-                    HOME ELECTRICITY & POWER SOURCE
+                    HOME ELECTRICITY &amp; POWER SOURCE
                   </span>
                   <h4 className="text-xs font-extrabold text-white">
                     {solarKw > 0
-                      ? `${solarKw}kVA Rooftop Solar + Lithium Inverter Active (24/7 Uninterrupted Power)`
+                      ? `${solarKw}kVA Hybrid Solar + Lithium Storage (24/7 Uninterrupted Clean Power)`
                       : isNepaActive && nepaUnits > 0
                       ? `${currentCity === 'abuja' ? 'AEDC' : 'EKEDC / NEPA'} Grid Power Online (${nepaUnits} kWh Meter Units)`
                       : player.inventory.generator && genFuel > 0
-                      ? `Mikano Backup Generator Running (${genFuel}L Fuel Left)`
+                      ? `Soundproof Backup Generator Running (${genFuel}L Fuel Left)`
                       : 'TOTAL BLACKOUT — Buy Solar, NEPA Units, or Generator Fuel!'}
                   </h4>
                 </div>
@@ -296,336 +394,604 @@ export const BuildingInteriorModal: React.FC<BuildingInteriorModalProps> = ({
               </div>
             </div>
 
-            {/* 4 Interactive Rooms Inside the House */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {/* ROOM 1: Master Bedroom & Kitchen */}
-              <div className="p-4 rounded-2xl bg-zinc-900/90 border border-white/10 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-teal-300 flex items-center gap-1.5">
-                    <BedDouble size={15} /> Bedroom, Kitchen & Closet
-                  </h3>
-                  <span className="text-[10px] font-mono text-zinc-400">
-                    Energy: {Math.round(vitals.energy)}%
-                  </span>
+            {/* ============================================================== */}
+            {/* SCENARIO A: BILLIONAIRE MEGA MANSION (Multi-Level Upstairs & Ground) */}
+            {/* ============================================================== */}
+            {isBillionaire ? (
+              mansionFloor === 'ground' ? (
+                /* BILLIONAIRE GROUND FLOOR */
+                <div className="space-y-3.5">
+                  <div className="flex items-center justify-between text-xs font-mono uppercase tracking-wider text-amber-400 font-bold border-b border-zinc-800 pb-1.5">
+                    <span>• Ground Floor: Grand Foyer, Living Hall &amp; Gourmet Kitchen</span>
+                    <span className="text-zinc-500">6 Specialized Rooms</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    {/* Room 1: Presidential Living Hall */}
+                    <div className="p-4 rounded-2xl bg-zinc-900/90 border border-amber-500/30 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black uppercase text-amber-300 flex items-center gap-1.5">
+                          <Tv size={15} /> Presidential Living Hall (100" 8K TV)
+                        </h4>
+                        <span className="text-[10px] font-mono text-zinc-400">Ground Floor</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-300 leading-relaxed">
+                        Italian velvet sectional sofas, double-height ceiling, fireplace, and 12-speaker Bose surround sound.
+                      </p>
+                      <button
+                        onClick={() => {
+                          audioEngine.playUpNepa();
+                          onUpdateVitals((v) => ({ ...v, stress: 0, energy: Math.min(100, v.energy + 30) }));
+                          onAddNotification('Living Hall Relaxation 🛋️', 'Relaxed on custom Italian sofas watching 8K cinema. Stress reduced to 0!', 'success');
+                        }}
+                        className="w-full py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black border border-amber-500/40 font-bold text-xs transition-all"
+                      >
+                        🛋️ Relax in Living Hall (Reduce Stress to 0%)
+                      </button>
+                    </div>
+
+                    {/* Room 2: Executive Chef Gourmet Kitchen */}
+                    <div className="p-4 rounded-2xl bg-zinc-900/90 border border-amber-500/30 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black uppercase text-amber-300 flex items-center gap-1.5">
+                          <Utensils size={15} /> Executive Chef Kitchen &amp; Dining Hall
+                        </h4>
+                        <span className="text-[10px] font-mono text-zinc-400">Sub-Zero &amp; Wolf</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-300 leading-relaxed">
+                        Italian Calacatta marble island, private chef station, wine cooler, and 14-seater mahogany dining hall.
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => {
+                            if (!chargeMoney(8500)) return;
+                            audioEngine.playEatFood();
+                            onUpdateVitals((v) => ({ ...v, hunger: 100, thirst: 100, energy: 100, health: Math.min(100, v.health + 20) }));
+                            onAddNotification('Chef Gourmet Meal 🥩', 'Private chef served Wagyu Suya, Lobster Jollof & Vintage Champagne!', 'success');
+                          }}
+                          className="py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs"
+                        >
+                          🥩 5-Star Chef Meal (₦8.5k)
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (!chargeMoney(15000)) return;
+                            audioEngine.playCashEarn();
+                            onAddNotification('Stocked Walk-In Pantry 🛒', 'Filled Sub-Zero double fridge with imported groceries and champagne!', 'success');
+                          }}
+                          className="py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs"
+                        >
+                          🛒 Stock Pantry (₦15k)
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Room 3: Private Cognac & Wine Bar */}
+                    <div className="p-4 rounded-2xl bg-zinc-900/90 border border-purple-500/30 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black uppercase text-purple-300 flex items-center gap-1.5">
+                          <Wine size={15} /> Private Cognac &amp; Wine Cellar Bar
+                        </h4>
+                        <span className="text-[10px] font-mono text-purple-400">VIP Cellar</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-300 leading-relaxed">
+                        Curated collection of 1982 Bordeaux wines, vintage champagne, and rare aged cognac with bar seating.
+                      </p>
+                      <button
+                        onClick={() => {
+                          if (!chargeMoney(25000)) return;
+                          audioEngine.playClick();
+                          onUpdateVitals((v) => ({ ...v, streetCred: Math.min(100, v.streetCred + 10), stress: 0 }));
+                          onAddNotification('Vintage Pour 🍸', 'Poured 25-year-old Louis XIII Cognac. +10 Street Cred & Zero Stress!', 'success');
+                        }}
+                        className="w-full py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs transition-all"
+                      >
+                        🍸 Pour Vintage Cognac (₦25k • +10 Cred)
+                      </button>
+                    </div>
+
+                    {/* Room 4: Biometric Walk-In Bank Vault Safe */}
+                    <div className="p-4 rounded-2xl bg-zinc-900/90 border border-emerald-500/30 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black uppercase text-emerald-300 flex items-center gap-1.5">
+                          <Lock size={15} /> Biometric Walk-In Bank Vault
+                        </h4>
+                        <span className="text-xs font-mono font-black text-emerald-400">
+                          Vault: {formatNaira(player.homeSafeCash || 0)}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-300 leading-relaxed">
+                        Reinforced 8-inch steel vault door with biometric palm scanner. Holds up to ₦100,000,000 completely safe from police raids.
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => {
+                            const amt = Math.min(player.cash, 500000);
+                            if (amt <= 0) return;
+                            audioEngine.playCashEarn();
+                            onUpdatePlayer((p) => ({ ...p, cash: p.cash - amt, homeSafeCash: (p.homeSafeCash || 0) + amt }));
+                            onAddNotification('Vault Stash 💰', `Locked ${formatNaira(amt)} in Billionaire Walk-In Vault!`, 'success');
+                          }}
+                          className="py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs"
+                        >
+                          Stash ₦500k in Vault
+                        </button>
+                        <button
+                          onClick={() => {
+                            const safe = player.homeSafeCash || 0;
+                            const amt = Math.min(safe, 500000);
+                            if (amt <= 0) return;
+                            audioEngine.playCashEarn();
+                            onUpdatePlayer((p) => ({ ...p, cash: p.cash + amt, homeSafeCash: (p.homeSafeCash || 0) - amt }));
+                            onAddNotification('Vault Withdrawal 💵', `Withdrew ${formatNaira(amt)} from Safe Vault.`, 'info');
+                          }}
+                          className="py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-bold text-xs"
+                        >
+                          Withdraw ₦500k
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-[11px] text-zinc-300 leading-relaxed">
-                  Sleep in your king-size bed to fully recover stamina, cook a home meal, or change your 3D outfit in the walk-in wardrobe.
-                </p>
-                <div className="space-y-2">
+              ) : mansionFloor === 'upstairs' ? (
+                /* BILLIONAIRE UPSTAIRS LUXURY FLOOR */
+                <div className="space-y-3.5">
+                  <div className="flex items-center justify-between text-xs font-mono uppercase tracking-wider text-amber-400 font-bold border-b border-zinc-800 pb-1.5">
+                    <span>• Upstairs Level: Master Presidential Suite, Jacuzzi Spa &amp; Rooftop Helipad</span>
+                    <span className="text-zinc-500">Upstairs Suites</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    {/* Upstairs 1: Master Presidential Suite */}
+                    <div className="p-4 rounded-2xl bg-zinc-900/90 border border-amber-500/40 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black uppercase text-amber-300 flex items-center gap-1.5">
+                          <Crown size={15} /> Master Presidential Suite &amp; Ocean Balcony
+                        </h4>
+                        <span className="text-[10px] font-mono text-amber-400">Top Floor</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-300 leading-relaxed">
+                        California King canopy bed, floor-to-ceiling glass doors opening to private oceanfront balcony, and walk-in dressing room.
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => {
+                            audioEngine.playUpNepa();
+                            onUpdateVitals((v) => ({ ...v, energy: 100, health: 100, stress: 0 }));
+                            onAddNotification('Deep Presidential Sleep 🛌', 'Slept in California King Master Suite — 100% Stamina, 100% Health, 0% Stress!', 'success');
+                          }}
+                          className="py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs"
+                        >
+                          🛌 King Bed Sleep
+                        </button>
+                        <button
+                          onClick={() => {
+                            onClose();
+                            onOpenCustomizer();
+                          }}
+                          className="py-2 rounded-xl bg-pink-600/30 hover:bg-pink-600/50 border border-pink-500/40 text-pink-200 font-bold text-xs flex items-center justify-center gap-1"
+                        >
+                          <Shirt size={13} /> Dressing Studio
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Upstairs 2: Marble Spa Bathroom with Jacuzzi Whirlpool */}
+                    <div className="p-4 rounded-2xl bg-zinc-900/90 border border-cyan-500/40 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black uppercase text-cyan-300 flex items-center gap-1.5">
+                          <Bath size={15} /> Marble Spa Bathroom with Jacuzzi Whirlpool
+                        </h4>
+                        <span className="text-[10px] font-mono text-cyan-400">Jacuzzi &amp; Sauna</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-300 leading-relaxed">
+                        Heated Jacuzzi hydrotherapy whirlpool tub, cedarwood dry steam sauna room, rainfall shower, and 24k gold fixtures.
+                      </p>
+                      <button
+                        onClick={() => {
+                          audioEngine.playUpNepa();
+                          onUpdateVitals((v) => ({ ...v, stress: 0, health: 100 }));
+                          onAddNotification('Jacuzzi Hydrotherapy 🛁', 'Soaked in the heated Jacuzzi whirlpool and cedarwood sauna! 100% Rejuvenated.', 'success');
+                        }}
+                        className="w-full py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-black text-xs transition-all shadow-md shadow-cyan-500/20"
+                      >
+                        🛁 Soak in Jacuzzi Whirlpool &amp; Sauna
+                      </button>
+                    </div>
+
+                    {/* Upstairs 3: 2 VIP Guest Bedrooms */}
+                    <div className="p-4 rounded-2xl bg-zinc-900/90 border border-white/10 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black uppercase text-white flex items-center gap-1.5">
+                          <BedDouble size={15} /> 2 Luxury En-Suite Guest Bedrooms
+                        </h4>
+                        <span className="text-[10px] font-mono text-zinc-400">Suites 2 &amp; 3</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-300 leading-relaxed">
+                        Two independent guest suites with king-size beds, en-suite marble bathrooms, and dedicated private verandas.
+                      </p>
+                      <button
+                        onClick={() => {
+                          audioEngine.playClick();
+                          onAddNotification('Guest Suites Ready 🛏️', 'Accommodations ready for VIP associates, syndicate captains & friends.', 'info');
+                        }}
+                        className="w-full py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs"
+                      >
+                        ✨ Inspect VIP Guest Accommodations
+                      </button>
+                    </div>
+
+                    {/* Upstairs 4: Private Cinema Lounge & Rooftop Helipad */}
+                    <div className="p-4 rounded-2xl bg-zinc-900/90 border border-indigo-500/30 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black uppercase text-indigo-300 flex items-center gap-1.5">
+                          <Film size={15} /> Private Cinema &amp; Rooftop Helipad
+                        </h4>
+                        <span className="text-[10px] font-mono text-indigo-400">Rooftop Skydeck</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-300 leading-relaxed">
+                        12-seat acoustic screening cinema room downstairs, plus rooftop penthouse terrace with infinity pool and FAA-certified helicopter landing pad.
+                      </p>
+                      <button
+                        onClick={() => {
+                          audioEngine.playClick();
+                          onUpdateVitals((v) => ({ ...v, stress: 0 }));
+                          onAddNotification('Private Screening 🎬', 'Hosted private cinema screening for friends. Stress reduced to 0!', 'success');
+                        }}
+                        className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs"
+                      >
+                        🎬 Host Private Cinema Screening
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* BILLIONAIRE SHOWROOM GARAGE TAB */
+                <div className="space-y-4">
+                  <div className="p-5 rounded-2xl bg-zinc-900/90 border border-amber-500/40 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
+                          <Warehouse size={22} />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-white">Banana Island 8-Car Showroom Garage</h4>
+                          <span className="text-xs font-mono text-amber-300">
+                            Capacity: {garageCap} Exotic Hypercars &amp; Motorcycles
+                          </span>
+                        </div>
+                      </div>
+                      {onOpenGarageModal && (
+                        <button
+                          onClick={() => {
+                            onClose();
+                            onOpenGarageModal();
+                          }}
+                          className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase"
+                        >
+                          Open Full Garage Terminal →
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-zinc-300 leading-relaxed">
+                      Your underground showroom features illuminated LED floor strips, glass display walls, and 8 physical bays directly accessible in 3D.
+                    </p>
+                  </div>
+                </div>
+              )
+            ) : isDuplex ? (
+              /* ============================================================== */
+              /* SCENARIO B: VICTORIA ISLAND 2-BEDROOM WATERFRONT PENTHOUSE */
+              /* ============================================================== */
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                <div className="p-4 rounded-2xl bg-zinc-900/90 border border-teal-500/30 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase text-teal-300 flex items-center gap-1.5">
+                      <Tv size={15} /> Designer Living Room &amp; Balcony
+                    </h4>
+                    <span className="text-[10px] font-mono text-zinc-400">Lagoon View</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300">
+                    Floor-to-ceiling glass doors opening onto the lagoon balcony with private cocktail bar.
+                  </p>
                   <button
                     onClick={() => {
                       audioEngine.playUpNepa();
-                      onUpdateVitals((v) => ({
-                        ...v,
-                        energy: 100,
-                        health: Math.min(100, v.health + 30),
-                        stress: Math.max(0, v.stress - 45),
-                      }));
-                      onAddNotification(
-                        'Well Rested 🛌',
-                        'Slept soundly in your apartment — 100% Energy & -45 Stress!',
-                        'success'
-                      );
+                      onUpdateVitals((v) => ({ ...v, stress: 0, energy: Math.min(100, v.energy + 20) }));
+                      onAddNotification('Balcony Chill 🌊', 'Enjoyed the fresh Lagos breeze on the lagoon balcony. Stress cleared!', 'success');
                     }}
-                    className="w-full py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-black font-black text-xs transition-all"
+                    className="w-full py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-black font-bold text-xs"
                   >
-                    🛌 Sleep in Bed (100% Stamina & -45 Stress)
+                    🌊 Relax on Lagoon Balcony (-45 Stress)
                   </button>
+                </div>
 
+                <div className="p-4 rounded-2xl bg-zinc-900/90 border border-teal-500/30 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase text-teal-300 flex items-center gap-1.5">
+                      <BedDouble size={15} /> Master Bedroom Suite &amp; Guest Room
+                    </h4>
+                    <span className="text-[10px] font-mono text-zinc-400">2 Bedrooms</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300">
+                    King bed in master suite, walk-in wardrobe, plus second fully furnished guest bedroom.
+                  </p>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() => {
-                        if (!chargeMoney(2500)) return;
-                        audioEngine.playEatFood();
-                        onUpdateVitals((v) => ({
-                          ...v,
-                          hunger: 100,
-                          thirst: 100,
-                          energy: Math.min(100, v.energy + 25),
-                        }));
-                        onAddNotification(
-                          'Home Kitchen 🍛',
-                          'Cooked Smoky Party Jollof & Cold Chapman at home!',
-                          'success'
-                        );
+                        audioEngine.playUpNepa();
+                        onUpdateVitals((v) => ({ ...v, energy: 100, health: 100, stress: Math.max(0, v.stress - 40) }));
+                        onAddNotification('Well Rested 🛌', 'Slept soundly in Master Penthouse Suite!', 'success');
                       }}
-                      className="py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-bold text-[11px]"
+                      className="py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-black font-bold text-xs"
                     >
-                      🍛 Cook Meal (₦2.5k)
+                      🛌 Master Bed Sleep
                     </button>
                     <button
                       onClick={() => {
                         onClose();
                         onOpenCustomizer();
                       }}
-                      className="py-2 rounded-xl bg-pink-600/30 hover:bg-pink-600/50 border border-pink-500/40 text-pink-200 font-bold text-[11px] flex items-center justify-center gap-1"
+                      className="py-2 rounded-xl bg-pink-600/30 hover:bg-pink-600/50 border border-pink-500/40 text-pink-200 font-bold text-xs flex items-center justify-center gap-1"
                     >
                       <Shirt size={13} /> Wardrobe
                     </button>
                   </div>
                 </div>
-              </div>
 
-              {/* ROOM 2: Home Developer Desk & Laptop Workstation */}
-              <div className="p-4 rounded-2xl bg-zinc-900/90 border border-indigo-500/30 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
-                    <Laptop size={15} /> Remote Dev & Work Desk
-                  </h3>
-                  <span className="text-[10px] font-mono bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded">
-                    {equippedLaptop.payMultiplier}x Pay Multiplier
-                  </span>
-                </div>
-                <div className="p-2.5 rounded-xl bg-black/50 border border-white/8 flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] text-zinc-400 block">Equipped Workstation:</span>
-                    <span className="text-xs font-bold text-white">
-                      {equippedLaptop.icon} {equippedLaptop.name}
-                    </span>
+                <div className="p-4 rounded-2xl bg-zinc-900/90 border border-white/10 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase text-cyan-300 flex items-center gap-1.5">
+                      <Bath size={15} /> Marble Spa Bathroom with Tub
+                    </h4>
+                    <span className="text-[10px] font-mono text-zinc-400">Spa Bath</span>
                   </div>
-                  <span className="text-[10px] font-mono text-emerald-400">
-                    {equippedLaptop.ram}
-                  </span>
+                  <p className="text-[11px] text-zinc-300">
+                    Deep soaking marble tub and glass walk-in rainfall shower.
+                  </p>
+                  <button
+                    onClick={() => {
+                      audioEngine.playUpNepa();
+                      onUpdateVitals((v) => ({ ...v, stress: 0, health: 100 }));
+                      onAddNotification('Hot Bath 🛁', 'Took a warm bath in the soaking tub. Completely refreshed!', 'success');
+                    }}
+                    className="w-full py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs"
+                  >
+                    🛁 Take Warm Bath (100% Health &amp; 0 Stress)
+                  </button>
                 </div>
-                <div className="space-y-2">
+
+                <div className="p-4 rounded-2xl bg-zinc-900/90 border border-amber-500/30 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase text-amber-300 flex items-center gap-1.5">
+                      <Warehouse size={15} /> 4-Car Secure Gated Garage
+                    </h4>
+                    <span className="text-[10px] font-mono text-amber-400">4 Bays</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300">
+                    Secure private parking bay for up to 4 vehicles with automatic security roll-up door.
+                  </p>
+                  {onOpenGarageModal && (
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onOpenGarageModal();
+                      }}
+                      className="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs flex items-center justify-center gap-1.5"
+                    >
+                      <Warehouse size={14} /> Open 4-Car Garage Bay
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : isFlat ? (
+              /* ============================================================== */
+              /* SCENARIO C: YABA TECH 1-BEDROOM MODERN FLAT */
+              /* ============================================================== */
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                <div className="p-4 rounded-2xl bg-zinc-900/90 border border-indigo-500/30 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase text-indigo-300 flex items-center gap-1.5">
+                      <Laptop size={15} /> Remote Tech Workstation &amp; Fiber Desk
+                    </h4>
+                    <span className="text-[10px] font-mono text-indigo-400">1Gbps Fiber</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300">
+                    Dual monitor battlestation to ship smart contract PRs and fintech microservices.
+                  </p>
                   <button
                     onClick={() => {
                       if (!hasHomePower) {
-                        onAddNotification(
-                          'No Electricity in Apartment!',
-                          'Install Solar Panels, buy NEPA meter units, or fuel your generator to power your laptop!',
-                          'warning'
-                        );
+                        onAddNotification('No Power!', 'Need Solar or NEPA to run PC workstation!', 'warning');
                         return;
                       }
-                      const basePay = 65000;
-                      const totalPay = Math.round(basePay * equippedLaptop.payMultiplier);
                       audioEngine.playCashEarn();
-                      onUpdatePlayer((p) => ({
-                        ...p,
-                        bankBalance: p.bankBalance + totalPay,
-                        nepaUnitsKwh:
-                          (p.solarKw || 0) > 0
-                            ? p.nepaUnitsKwh
-                            : Math.max(0, (p.nepaUnitsKwh ?? 65) - 5),
-                      }));
-                      onUpdateVitals((v) => ({
-                        ...v,
-                        energy: Math.max(0, v.energy - 10),
-                        streetCred: Math.min(100, v.streetCred + 4),
-                      }));
-                      onAddNotification(
-                        'Remote Dev PR Merged! 💻',
-                        `Shipped production code on ${equippedLaptop.name} — +${formatNaira(totalPay)} wired to Bank!`,
-                        'success'
-                      );
+                      const pay = 75000;
+                      onUpdatePlayer((p) => ({ ...p, bankBalance: p.bankBalance + pay }));
+                      onUpdateVitals((v) => ({ ...v, streetCred: Math.min(100, v.streetCred + 5) }));
+                      onAddNotification('PR Merged! 💻', `Shipped backend code — +${formatNaira(pay)} deposited to Bank!`, 'success');
                     }}
-                    className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs transition-all"
+                    className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs"
                   >
-                    💻 Ship Remote Code Contract (+
-                    {formatNaira(Math.round(65000 * equippedLaptop.payMultiplier))})
+                    💻 Ship Code Contract (+₦75k to Bank)
                   </button>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-zinc-900/90 border border-white/10 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase text-white flex items-center gap-1.5">
+                      <BedDouble size={15} /> Bedroom &amp; Living Room
+                    </h4>
+                    <span className="text-[10px] font-mono text-zinc-400">1 Bedroom</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300">
+                    Queen mattress, smart TV, and wardrobe closet to change into fresh drip.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => {
+                        audioEngine.playUpNepa();
+                        onUpdateVitals((v) => ({ ...v, energy: 100, stress: Math.max(0, v.stress - 35) }));
+                        onAddNotification('Rested 🛌', '100% Stamina & -35 Stress!', 'success');
+                      }}
+                      className="py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-black font-bold text-xs"
+                    >
+                      🛌 Sleep in Bed
+                    </button>
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onOpenCustomizer();
+                      }}
+                      className="py-2 rounded-xl bg-pink-600/30 hover:bg-pink-600/50 border border-pink-500/40 text-pink-200 font-bold text-xs flex items-center justify-center gap-1"
+                    >
+                      <Shirt size={13} /> Wardrobe
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-zinc-900/90 border border-white/10 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase text-yellow-300 flex items-center gap-1.5">
+                      <Utensils size={15} /> Kitchenette &amp; Dining
+                    </h4>
+                    <span className="text-[10px] font-mono text-zinc-400">Microwave &amp; Fridge</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300">
+                    Cook home meals or heat up takeaway from Amala Shitta.
+                  </p>
                   <button
                     onClick={() => {
-                      onClose();
-                      onOpenTechMiniGame();
+                      if (!chargeMoney(2000)) return;
+                      audioEngine.playEatFood();
+                      onUpdateVitals((v) => ({ ...v, hunger: 100, thirst: 100, energy: Math.min(100, v.energy + 25) }));
+                      onAddNotification('Kitchen Meal 🍛', 'Cooked Smoky Jollof & Dodo at home!', 'success');
                     }}
-                    className="w-full py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-indigo-300 font-bold text-[11px]"
+                    className="w-full py-2 rounded-xl bg-yellow-500 hover:bg-yellow-400 text-black font-bold text-xs"
                   >
-                    🚀 Open Full Fintech IDE Sprint
+                    🍛 Cook Meal (₦2,000)
                   </button>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-zinc-900/90 border border-amber-500/30 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase text-amber-300 flex items-center gap-1.5">
+                      <Warehouse size={15} /> 2-Car Private Gated Garage
+                    </h4>
+                    <span className="text-[10px] font-mono text-amber-400">2 Bays</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300">
+                    Gated driveway holding 2 vehicles safely behind your electric gate.
+                  </p>
+                  {onOpenGarageModal && (
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onOpenGarageModal();
+                      }}
+                      className="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs flex items-center justify-center gap-1.5"
+                    >
+                      <Warehouse size={14} /> Open 2-Car Garage ({parkedCount}/2)
+                    </button>
+                  )}
                 </div>
               </div>
-
-              {/* ROOM 3: Smart NEPA Meter, Generator & Rooftop Solar */}
-              <div className="p-4 rounded-2xl bg-zinc-900/90 border border-amber-500/30 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
-                    <Sun size={15} /> Solar, NEPA Bill & Fuel Room
-                  </h3>
-                  <span className="text-[10px] font-mono text-emerald-400">
-                    Solar: {solarKw}kVA • Gen: {genFuel}L
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
+            ) : (
+              /* ============================================================== */
+              /* SCENARIO D: FACE-ME-I-FACE-YOU / SINGLE ROOM MAINLAND BUDGET */
+              /* ============================================================== */
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                <div className="p-4 rounded-2xl bg-zinc-900/90 border border-zinc-700/80 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase text-amber-300 flex items-center gap-1.5">
+                      <BedDouble size={15} /> Single Foam Bed &amp; Net
+                    </h4>
+                    <span className="text-[10px] font-mono text-zinc-400">Single Room</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300">
+                    Single foam mattress with mosquito net. Sleep to recover your stamina.
+                  </p>
                   <button
                     onClick={() => {
-                      if (!chargeMoney(12000)) return;
                       audioEngine.playUpNepa();
-                      onUpdatePlayer((p) => ({
-                        ...p,
-                        nepaUnitsKwh: (p.nepaUnitsKwh ?? 65) + 50,
-                        nepaBillArrears: 0,
-                      }));
-                      onAddNotification(
-                        'NEPA Prepaid Meter Recharged ⚡',
-                        'Loaded +50 kWh token & cleared NEPA arrears!',
-                        'success'
-                      );
+                      onUpdateVitals((v) => ({ ...v, energy: Math.min(100, v.energy + 65), stress: Math.max(0, v.stress - 20) }));
+                      onAddNotification('Rested in Room 🛌', 'Recovered stamina on foam bed.', 'success');
                     }}
-                    className="p-2 rounded-xl bg-zinc-800 hover:bg-amber-500/20 border border-amber-500/30 text-left"
+                    className="w-full py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-black font-bold text-xs"
                   >
-                    <span className="text-[11px] font-bold text-amber-300 block">
-                      ⚡ Pay NEPA Bill (+50 kWh)
-                    </span>
-                    <span className="text-[10px] font-mono text-zinc-400">
-                      ₦12,000 {nepaArrears > 0 ? `(Clears ₦${nepaArrears.toLocaleString()})` : ''}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      if (!chargeMoney(18000)) return;
-                      audioEngine.playCashEarn();
-                      onUpdatePlayer((p) => ({
-                        ...p,
-                        inventory: {
-                          ...p.inventory,
-                          generator: true,
-                          generatorFuelLitres: (p.inventory.generatorFuelLitres || 0) + 25,
-                        },
-                      }));
-                      onAddNotification(
-                        'Generator Fueled ⛽',
-                        'Added +25L Jerrycan to your home backup generator!',
-                        'success'
-                      );
-                    }}
-                    className="p-2 rounded-xl bg-zinc-800 hover:bg-amber-500/20 border border-amber-500/30 text-left"
-                  >
-                    <span className="text-[11px] font-bold text-orange-300 block">
-                      ⛽ Buy 25L Fuel Jerrycan
-                    </span>
-                    <span className="text-[10px] font-mono text-zinc-400">
-                      ₦18,000 • Powers Gen
-                    </span>
+                    🛌 Sleep on Bed (+65% Stamina)
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 pt-1">
+                <div className="p-4 rounded-2xl bg-zinc-900/90 border border-zinc-700/80 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase text-orange-300 flex items-center gap-1.5">
+                      <Utensils size={15} /> Kerosene Stove Cooking Corner
+                    </h4>
+                    <span className="text-[10px] font-mono text-zinc-400">Corner Stove</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300">
+                    Small camping kerosene stove to boil Indomie noodles and boiled eggs.
+                  </p>
                   <button
                     onClick={() => {
-                      if (solarKw >= 5) {
-                        onAddNotification('Already Installed', 'You already have rooftop solar!', 'info');
-                        return;
-                      }
-                      if (!chargeMoney(450000)) return;
-                      audioEngine.playUpNepa();
-                      onUpdatePlayer((p) => ({
-                        ...p,
-                        solarKw: 5,
-                        inventory: { ...p.inventory, solarInverter: true },
-                      }));
-                      onUpdateVitals((v) => ({
-                        ...v,
-                        streetCred: Math.min(100, v.streetCred + 12),
-                      }));
-                      onAddNotification(
-                        '5kVA Solar System Installed! ☀️',
-                        'Your house now has 24/7 clean solar power — immune to NEPA outages!',
-                        'success'
-                      );
+                      if (!chargeMoney(800)) return;
+                      audioEngine.playEatFood();
+                      onUpdateVitals((v) => ({ ...v, hunger: 100, thirst: 80, energy: Math.min(100, v.energy + 20) }));
+                      onAddNotification('Cooked Indomie 🍜', 'Boiled 2 packs of spicy Indomie with egg!', 'success');
                     }}
-                    className={`p-2 rounded-xl border text-left ${
-                      solarKw >= 5
-                        ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
-                        : 'bg-zinc-800 hover:bg-emerald-500/20 border-emerald-500/30 text-white'
-                    }`}
+                    className="w-full py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs"
                   >
-                    <span className="text-[11px] font-bold block">
-                      {solarKw >= 5 ? '✓ 5kVA Solar Active' : '☀️ Install 5kVA Solar'}
-                    </span>
-                    <span className="text-[10px] font-mono text-zinc-400">₦450,000 • 24/7 Power</span>
+                    🍜 Boil Indomie &amp; Egg (₦800)
                   </button>
+                </div>
 
+                <div className="p-4 rounded-2xl bg-zinc-900/90 border border-zinc-700/80 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase text-cyan-300 flex items-center gap-1.5">
+                      <Bath size={15} /> Shared Compound Corridor &amp; Bathroom
+                    </h4>
+                    <span className="text-[10px] font-mono text-zinc-400">Shared Yard</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300">
+                    Shared compound bathroom corridor. Fetch water from the tap and take a bucket bath.
+                  </p>
                   <button
                     onClick={() => {
-                      if (solarKw >= 10) {
-                        onAddNotification('Max Solar Installed', '10kVA Tesla Solar Roof active!', 'info');
-                        return;
-                      }
-                      if (!chargeMoney(1200000)) return;
                       audioEngine.playUpNepa();
-                      onUpdatePlayer((p) => ({
-                        ...p,
-                        solarKw: 10,
-                        inventory: { ...p.inventory, solarInverter: true },
-                      }));
-                      onUpdateVitals((v) => ({
-                        ...v,
-                        streetCred: Math.min(100, v.streetCred + 25),
-                      }));
-                      onAddNotification(
-                        '10kVA Tesla Solar Roof Installed! ☀️⚡',
-                        'Maximum off-grid luxury! +25 Street Cred & zero electricity bills forever!',
-                        'success'
-                      );
+                      onUpdateVitals((v) => ({ ...v, stress: Math.max(0, v.stress - 25), health: Math.min(100, v.health + 15) }));
+                      onAddNotification('Cold Bucket Bath 🪣', 'Fetched cold water from yard tap and took bucket bath!', 'info');
                     }}
-                    className={`p-2 rounded-xl border text-left ${
-                      solarKw >= 10
-                        ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
-                        : 'bg-zinc-800 hover:bg-emerald-500/20 border-emerald-500/30 text-white'
-                    }`}
+                    className="w-full py-2 rounded-xl bg-cyan-700 hover:bg-cyan-600 text-white font-bold text-xs"
                   >
-                    <span className="text-[11px] font-bold block">
-                      {solarKw >= 10 ? '✓ 10kVA Solar Roof' : '🔋 10kVA Tesla Solar'}
-                    </span>
-                    <span className="text-[10px] font-mono text-zinc-400">₦1,200,000 • +25 Cred</span>
+                    🪣 Take Cold Bucket Bath (-25 Stress)
                   </button>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-zinc-900/90 border border-amber-500/30 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase text-amber-300 flex items-center gap-1.5">
+                      <Warehouse size={15} /> Street Curb Parking Space
+                    </h4>
+                    <span className="text-[10px] font-mono text-zinc-400">1 Vehicle</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300">
+                    Single roadside parking spot outside the compound for your Okada or car.
+                  </p>
+                  {onOpenGarageModal && (
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onOpenGarageModal();
+                      }}
+                      className="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs flex items-center justify-center gap-1.5"
+                    >
+                      <Warehouse size={14} /> Open Street Spot ({parkedCount}/1)
+                    </button>
+                  )}
                 </div>
               </div>
-
-              {/* ROOM 4: Home Safe Vault & Property Upgrade */}
-              <div className="p-4 rounded-2xl bg-zinc-900/90 border border-white/10 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
-                    <Lock size={15} /> Bedroom Safe & Dynasty 8
-                  </h3>
-                  <span className="text-xs font-mono font-bold text-emerald-400">
-                    Safe: {formatNaira(player.homeSafeCash || 0)}
-                  </span>
-                </div>
-                <p className="text-[11px] text-zinc-300">
-                  Cash stored in your bedroom biometric safe is 100% protected if you get busted by Police or mugged on the street.
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => {
-                      const amt = Math.min(player.cash, 50000);
-                      if (amt <= 0) return;
-                      audioEngine.playCashEarn();
-                      onUpdatePlayer((p) => ({
-                        ...p,
-                        cash: p.cash - amt,
-                        homeSafeCash: (p.homeSafeCash || 0) + amt,
-                      }));
-                      onAddNotification('Safe Deposit', `Stored ${formatNaira(amt)} in Home Safe.`, 'success');
-                    }}
-                    className="py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs"
-                  >
-                    Stash ₦50k in Safe
-                  </button>
-                  <button
-                    onClick={() => {
-                      const safe = player.homeSafeCash || 0;
-                      const amt = Math.min(safe, 50000);
-                      if (amt <= 0) return;
-                      audioEngine.playCashEarn();
-                      onUpdatePlayer((p) => ({
-                        ...p,
-                        cash: p.cash + amt,
-                        homeSafeCash: (p.homeSafeCash || 0) - amt,
-                      }));
-                      onAddNotification('Safe Withdrawal', `Took ${formatNaira(amt)} from Safe.`, 'info');
-                    }}
-                    className="py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-bold text-xs"
-                  >
-                    Withdraw ₦50k
-                  </button>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

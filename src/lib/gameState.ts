@@ -12,6 +12,7 @@ import {
   PhoneModelSpec,
   LaptopModelSpec,
   BankVaultSpec,
+  PropertySpec,
 } from './types';
 
 export const BANK_VAULTS_CATALOG: BankVaultSpec[] = [
@@ -517,8 +518,11 @@ export const ABUJA_DISTRICTS: DistrictInfo[] = [
   },
 ];
 
-export function getDistrictsForCity(city: CityId = 'lagos'): DistrictInfo[] {
-  return city === 'abuja' ? ABUJA_DISTRICTS : DISTRICTS;
+export function getDistrictsForCity(city: CityId = 'lagos', housing?: string): DistrictInfo[] {
+  const base = city === 'abuja' ? ABUJA_DISTRICTS : DISTRICTS;
+  if (!housing) return base;
+  const homeDistrict = getHomeDistrict(housing, city);
+  return base.map((d) => (d.id === 'home' ? homeDistrict : d));
 }
 
 // ATMs placed around the city (press E nearby to open the bank app)
@@ -1949,73 +1953,195 @@ export const FOOD_MENU = [
   },
 ];
 
-export const REAL_ESTATE = [
+export const REAL_ESTATE: PropertySpec[] = [
+  {
+    id: 'face-me-i-face-you',
+    name: 'Oshodi / Ajegunle Single Room (Face-Me-I-Face-You)',
+    category: 'flat',
+    district: 'Mainland Coast (Oshodi)',
+    rent: 45000,
+    buyPrice: 4500000,
+    deposit: 90000,
+    credReq: 5,
+    comfort: 35,
+    garageCapacity: 1,
+    hasUpstairs: false,
+    location: { x: 77.5, z: 50, blockX: 80, blockZ: 40 },
+    amenities: [
+      '🛏️ Single Foam Bed & Mosquito Net',
+      '🍳 Kerosene Cooking Stove Corner',
+      '🪣 Shared Washroom & Corridor',
+      '⚡ Tiger Generator & Pre-Paid Meter',
+      '🚲 1-Vehicle Street Parking Slot',
+    ],
+    badge: 'Mainland Budget Room',
+    roomsDescription: 'Single multi-purpose room with foam bed, cooking stove corner, shared compound corridor, and 1 street parking curb spot.',
+  },
+  {
+    id: 'mainland-flat',
+    name: 'Yaba Tech Corridor 1-Bedroom Modern Flat',
+    category: 'condo',
+    district: 'Yaba Silicon Tech Corridor',
+    rent: 350000,
+    buyPrice: 38000000,
+    deposit: 700000,
+    credReq: 25,
+    comfort: 72,
+    garageCapacity: 2,
+    hasUpstairs: false,
+    location: { x: 77.5, z: 50, blockX: 80, blockZ: 40 },
+    amenities: [
+      '🛋️ Modern Living Room & 55" Smart TV',
+      '💻 Remote Tech Workstation & Fiber Optic Hub',
+      '🍳 Kitchenette with Fridge & Microwave',
+      '🛏️ Master Bedroom & Wardrobe Closet',
+      '🚿 Private Tiled Bathroom & Hot Shower',
+      '🚗 Gated 2-Car Private Garage',
+      '⚡ 5kVA Solar & Hybrid Inverter',
+    ],
+    badge: 'Tech Founder Flat',
+    roomsDescription: 'Clean 1-bedroom flat with living room, kitchenette, remote coding desk, master bedroom, bathroom, and 2-car private garage.',
+  },
+  {
+    id: 'lekki-duplex',
+    name: 'Victoria Island 2-Bedroom Waterfront Penthouse',
+    category: 'villa',
+    district: 'Victoria Island Lagoon Waterfront',
+    rent: 1800000,
+    buyPrice: 180000000,
+    deposit: 3600000,
+    credReq: 55,
+    comfort: 90,
+    garageCapacity: 4,
+    hasUpstairs: false,
+    location: { x: 77.5, z: 50, blockX: 80, blockZ: 40 },
+    amenities: [
+      '🛋️ Designer Living Room & Cocktail Bar',
+      '🌊 Panoramic Lagoon View Balcony',
+      '🍳 Gourmet Island Kitchen & Wine Cooler',
+      '🛏️ Master Suite with Walk-In Dressing Room',
+      '🛏️ Second Guest Bedroom',
+      '🛁 Marble Spa Bathroom with Deep Soaking Tub',
+      '🔐 Biometric Wall Safe & High Security',
+      '🚗 4-Car Secure Gated Garage',
+      '⚡ 10kVA Hybrid Solar + 100kVA Soundproof Gen',
+    ],
+    badge: 'Executive Penthouse',
+    roomsDescription: 'Expansive 2-bedroom luxury penthouse with living room, lagoon balcony, island kitchen, master suite, guest room, spa bath, and 4-car garage.',
+  },
+  {
+    id: 'ikoyi-mansion',
+    name: 'Banana Island Billionaire Mega Mansion & Compound',
+    category: 'mansion',
+    district: 'Banana Island Billionaires Peninsula',
+    rent: 8500000,
+    buyPrice: 650000000,
+    deposit: 18000000,
+    credReq: 80,
+    comfort: 100,
+    garageCapacity: 8,
+    hasUpstairs: true,
+    location: { x: 77.5, z: -48, blockX: 80, blockZ: -40 },
+    amenities: [
+      '🏛️ Grand Double-Height Foyer & Gold Chandelier',
+      '🛋️ Presidential Living Room (100" 8K TV & Home Theater)',
+      '🍳 Executive Chef Gourmet Kitchen & Marble Dining Hall',
+      '🍸 Indoor Cognac & Wine Cellar Bar',
+      '🚽 Ground Floor Guest Powder Room / Bathroom',
+      '🔐 Biometric Walk-In Bank Vault Room',
+      '🪜 Upstairs Presidential Master Suite & Ocean Balcony',
+      '🛏️ 2 Luxury VIP Guest Bedrooms (En-Suite)',
+      '🛁 Spa Marble Bathroom with Jacuzzi Whirlpool & Sauna',
+      '🎬 Private Cinema Screening Room & Executive Lounge',
+      '🏊 Rooftop Penthouse Terrace with Infinity Pool & Private Helipad',
+      '🚗 8-Car Luxury Illuminated Showroom Garage',
+      '🛡️ MOPOL Armed Guard Gatehouse & Electric Security Wall',
+    ],
+    badge: 'Billionaire Mega Estate',
+    roomsDescription: 'Multi-level 2-story grand estate located on Banana Island. Features upstairs presidential suite, multiple guest bedrooms, gourmet kitchen, cinema, jacuzzi spa, rooftop pool & helipad, and 8-car showroom garage.',
+  },
   {
     id: 'squatting',
-    name: 'Alta Street Motel Apt #12 (Mainland)',
+    name: 'Alta Street Motel Bedsit (Mainland)',
     category: 'bedsit',
-    district: 'Mainland Coast',
+    district: 'Mainland Coast (Surulere)',
     rent: 0,
     buyPrice: 0,
     deposit: 0,
     credReq: 0,
-    comfort: 25,
+    comfort: 20,
+    garageCapacity: 1,
+    hasUpstairs: false,
+    location: { x: 77.5, z: 50, blockX: 80, blockZ: 40 },
     amenities: ['🛏️ Single Foam Bed', '⚡ NEPA Direct (Subject to Blackouts)', '🚪 Wooden Bolt Lock'],
     badge: 'Starter Motel',
-  },
-  {
-    id: 'face-me-i-face-you',
-    name: 'Studio Loft (Surulere)',
-    category: 'flat',
-    district: 'Surulere Arts District',
-    rent: 35000,
-    buyPrice: 3800000,
-    deposit: 70000,
-    credReq: 10,
-    comfort: 48,
-    amenities: ['📶 4G Wi-Fi Antenna', '⚡ Shared Generator Access', '🚲 Motorcycle Street Parking'],
-    badge: 'Budget Studio',
-  },
-  {
-    id: 'mainland-flat',
-    name: '2-Car Garage Dev Loft (Yaba)',
-    category: 'condo',
-    district: 'Yaba Tech Corridor',
-    rent: 220000,
-    buyPrice: 24000000,
-    deposit: 500000,
-    credReq: 35,
-    comfort: 78,
-    amenities: ['⚡ 24/7 Solar & Hybrid Inverter', '🚗 2-Car Private Garage', '💻 1Gbps Fiber Optic Hub', '🛡️ Electric Fence'],
-    badge: 'Tech Founder Loft',
-  },
-  {
-    id: 'lekki-duplex',
-    name: '6-Car Luxury Villa (Lekki Phase 1)',
-    category: 'villa',
-    district: 'Lekki Phase 1 Waterfront',
-    rent: 1800000,
-    buyPrice: 95000000,
-    deposit: 4000000,
-    credReq: 60,
-    comfort: 94,
-    amenities: ['🏊 Infinity Swimming Pool', '⚡ Heavy 100kVA Diesel Generator', '🚗 6-Car Underground Showroom', '🛡️ Armed MOPOL Security Station'],
-    badge: 'Executive Villa',
-  },
-  {
-    id: 'ikoyi-mansion',
-    name: 'Syndicate Helipad Penthouse (Banana Island)',
-    category: 'penthouse',
-    district: 'Banana Island Billionaires Row',
-    rent: 6500000,
-    buyPrice: 280000000,
-    deposit: 15000000,
-    credReq: 85,
-    comfort: 100,
-    amenities: ['🚁 Private Rooftop Helipad', '🛥️ Private Yacht Slip', '🏊 Sky-Deck Jacuzzi', '⚡ 100% Uninterrupted Solar+Hydro Grid', '🛡️ Biometric Vault Room'],
-    badge: 'Billionaire Penthouse',
+    roomsDescription: 'Basic squatter corner with foam mattress and padlock door.',
   },
 ];
+
+export function getHomeDistrict(housing?: string, city: CityId = 'lagos'): DistrictInfo {
+  const isBillionaire = housing === 'ikoyi-mansion';
+  if (city === 'abuja') {
+    return isBillionaire
+      ? {
+          id: 'home',
+          name: 'Maitama Hills Billionaire Mega Mansion',
+          code: 'FCT 901',
+          tagline: 'Presidential 2-Story Mega Estate, Helipad, Jacuzzi, Cinema & 8-Car Showroom',
+          x: 77.5,
+          z: -48,
+          blockX: 80,
+          blockZ: -40,
+          description: 'Your 2-story billionaire estate in Maitama Hills with upstairs presidential suite, infinity pool, and 8-car garage.',
+          color: '#FACC15',
+          blipIcon: '🏰',
+          actionLabel: 'Enter Billionaire Mega Mansion (3D Interior)',
+        }
+      : {
+          id: 'home',
+          name: 'Your Abuja Residence (Maitama)',
+          code: 'FCT 900',
+          tagline: 'Maitama Residence, Solar Array, AEDC Meter & Garage',
+          x: 77.5,
+          z: 50,
+          blockX: 80,
+          blockZ: 40,
+          description: 'Walk inside your Abuja home to rest, code, or access your garage.',
+          color: '#14B8A6',
+          blipIcon: '🏠',
+          actionLabel: 'Enter Residence (3D Interior)',
+        };
+  }
+  return isBillionaire
+    ? {
+        id: 'home',
+        name: 'Banana Island Billionaire Mega Mansion',
+        code: 'POSTAL 105',
+        tagline: '2-Story Waterfront Estate, Helipad, Jacuzzi, Cinema & 8-Car Showroom Garage',
+        x: 77.5,
+        z: -48,
+        blockX: 80,
+        blockZ: -40,
+        description: 'Your private 2-story billionaire compound on Banana Island with upstairs master suite, ocean balcony, cinema, jacuzzi spa, and 8-car showroom garage.',
+        color: '#FACC15',
+        blipIcon: '🏰',
+        actionLabel: 'Enter Billionaire Mega Mansion (3D Interior)',
+      }
+    : {
+        id: 'home',
+        name: 'Your Lagos Residence',
+        code: 'POSTAL 100',
+        tagline: 'Personal Residence, Solar Inverter, NEPA Meter & Gated Garage',
+        x: 77.5,
+        z: 50,
+        blockX: 80,
+        blockZ: 40,
+        description: 'Walk inside your 3D home to see your living room, bedroom, kitchen, workstation, safe, and garage.',
+        color: '#14B8A6',
+        blipIcon: '🏠',
+        actionLabel: 'Enter Residence (3D Interior)',
+      };
+}
 
 export const INITIAL_TWEETS: TweetItem[] = [
   {

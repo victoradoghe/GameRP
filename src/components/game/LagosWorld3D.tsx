@@ -83,6 +83,10 @@ export interface LagosWorld3DProps {
   onBusted: () => void;
   onWantedEscaped: () => void;
   onCrime: (kind: string) => void;
+  housing?: PlayerStats['housing'];
+  ownedVehicles?: string[];
+  garageVehicles?: string[];
+  onOpenGarage?: (propertyId?: string) => void;
   onDamage: (amount: number, reason: string) => void;
   onEmoteCancel: () => void;
   onUpdateWorldState: (state: WorldRealtimeState) => void;
@@ -1233,6 +1237,127 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       }
     }
 
+    // =========================================================================
+    // DEDICATED BANANA ISLAND BILLIONAIRE MEGA MANSION ESTATE (80, -40)
+    // Multi-level 2-Story architecture, 8-car showroom garage, infinity pool,
+    // security gatehouse, and private rooftop helipad!
+    // =========================================================================
+    const estateX = 77.5;
+    const estateZ = -45;
+
+    // 1. Estate Master Stone Compound Slab
+    const estateSlab = new THREE.Mesh(
+      new THREE.BoxGeometry(36, 0.22, 32),
+      new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.82 })
+    );
+    estateSlab.position.set(estateX, 0.05, estateZ);
+    estateSlab.receiveShadow = true;
+    outdoorGroup.add(estateSlab);
+
+    // 2. Perimeter Security Wall with Gold Accents
+    const estateWallMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.7 });
+    const wallLeft = new THREE.Mesh(new THREE.BoxGeometry(0.6, 3.2, 32), estateWallMat);
+    wallLeft.position.set(estateX - 18, 1.6, estateZ);
+    const wallRight = new THREE.Mesh(new THREE.BoxGeometry(0.6, 3.2, 32), estateWallMat);
+    wallRight.position.set(estateX + 18, 1.6, estateZ);
+    const wallBack = new THREE.Mesh(new THREE.BoxGeometry(36, 3.2, 0.6), estateWallMat);
+    wallBack.position.set(estateX, 1.6, estateZ - 16);
+    outdoorGroup.add(wallLeft, wallRight, wallBack);
+    colliders.push(
+      { minX: estateX - 18.3, maxX: estateX - 17.7, minZ: estateZ - 16, maxZ: estateZ + 16 },
+      { minX: estateX + 17.7, maxX: estateX + 18.3, minZ: estateZ - 16, maxZ: estateZ + 16 },
+      { minX: estateX - 18, maxX: estateX + 18, minZ: estateZ - 16.3, maxZ: estateZ - 15.7 }
+    );
+
+    // 3. Main 2-Story Mega Mansion Structure
+    // Ground Floor (Limestone White & Tinted Glass)
+    addBox(estateX - 4, estateZ - 4, 18, 14, 5.2, getWindowMat(0xf8fafc), { windows: true });
+    // Second Floor / Upstairs Structure (Cantilevered over ground floor)
+    addBox(estateX - 4, estateZ - 4, 19.5, 15, 4.4, new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.3 }), {
+      y: 5.2,
+      collide: false,
+    });
+    // Cantilevered Ocean-Facing Glass Balconies
+    const balconyGlass = new THREE.Mesh(
+      new THREE.BoxGeometry(16, 1.1, 0.2),
+      new THREE.MeshPhysicalMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.65, roughness: 0.1, transmission: 0.9 })
+    );
+    balconyGlass.position.set(estateX - 4, 6.0, estateZ + 3.6);
+    outdoorGroup.add(balconyGlass);
+
+    // Rooftop Terrace with Parapet & Private Helipad Marker
+    const helipadPad = new THREE.Mesh(
+      new THREE.CylinderGeometry(5.2, 5.2, 0.15, 24),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.75 })
+    );
+    helipadPad.position.set(estateX - 4, 9.8, estateZ - 4);
+    outdoorGroup.add(helipadPad);
+
+    // Yellow Helipad 'H' and Ring
+    const heliRing = new THREE.Mesh(
+      new THREE.RingGeometry(4.2, 4.6, 32),
+      new THREE.MeshBasicMaterial({ color: 0xfacc15, side: THREE.DoubleSide })
+    );
+    heliRing.rotation.x = -Math.PI / 2;
+    heliRing.position.set(estateX - 4, 9.88, estateZ - 4);
+    outdoorGroup.add(heliRing);
+
+    // Rooftop Sky Pool (Turquoise water)
+    const skyPool = new THREE.Mesh(
+      new THREE.BoxGeometry(7, 0.2, 4),
+      new THREE.MeshPhysicalMaterial({ color: 0x06b6d4, emissive: 0x0891b2, emissiveIntensity: 0.5, roughness: 0.05, clearcoat: 1.0 })
+    );
+    skyPool.position.set(estateX + 4.5, 9.75, estateZ - 4);
+    outdoorGroup.add(skyPool);
+
+    // 4. Physical 8-Bay Luxury Showroom Garage Pavilion (East Wing)
+    addBox(estateX + 11, estateZ - 4, 11, 14, 4.6, new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4 }));
+    const garageGlass = new THREE.Mesh(
+      new THREE.BoxGeometry(10.5, 3.4, 0.2),
+      new THREE.MeshPhysicalMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.55, transmission: 0.85 })
+    );
+    garageGlass.position.set(estateX + 11, 2.0, estateZ + 3.1);
+    outdoorGroup.add(garageGlass);
+
+    // 8 Illuminated Floor Parking Bay Markers
+    const bayLineMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+    for (let i = 0; i < 4; i++) {
+      const bayStrip = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 4.5), bayLineMat);
+      bayStrip.rotation.x = -Math.PI / 2;
+      bayStrip.position.set(estateX + 7 + i * 2.4, 0.18, estateZ - 4);
+      outdoorGroup.add(bayStrip);
+    }
+
+    // 5. Entrance Gate, Security Post & Golden Sign
+    const mopolPost = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, 2.8, 2.4),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 })
+    );
+    mopolPost.position.set(estateX - 10, 1.4, estateZ + 14);
+    outdoorGroup.add(mopolPost);
+
+    // Water Fountain in front of mansion
+    const fountainBase = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.8, 3.2, 0.6, 16),
+      new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.3 })
+    );
+    fountainBase.position.set(estateX - 4, 0.3, estateZ + 9);
+    const fountainWater = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.5, 2.5, 0.4, 16),
+      new THREE.MeshPhysicalMaterial({ color: 0x06b6d4, emissive: 0x0284c7, emissiveIntensity: 0.4 })
+    );
+    fountainWater.position.set(estateX - 4, 0.55, estateZ + 9);
+    outdoorGroup.add(fountainBase, fountainWater);
+
+    // Golden Signboard
+    const mansionSign = addSign('BANANA ISLAND BILLIONAIRE ESTATE', '#78350f', '#fef08a', estateX - 4, 4.8, estateZ + 3.2, 11, 0.8);
+    outdoorGroup.add(mansionSign);
+
+    // Portals for Billionaire Estate & Showroom Garage
+    doorPositions.set('home_mansion' as any, { x: estateX - 4, z: estateZ + 3.0 });
+    doorPositions.set('home_garage' as any, { x: estateX + 11, z: estateZ + 3.2 });
+    doorPositions.set('standard_garage' as any, { x: 70, z: 52 });
+
     // ---------- Google Maps City-Specific 3D Landscapes ----------
     const lagosLandscapeGroup = new THREE.Group();
     const pylonMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.35 });
@@ -1948,7 +2073,7 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       }
 
       // 3. Outdoors on foot — check both sidewalk marker AND 3D glass front door!
-      const activeDistricts = getDistrictsForCity(propsRef.current.activeCity || 'lagos');
+      const activeDistricts = getDistrictsForCity(propsRef.current.activeCity || 'lagos', propsRef.current.housing);
       for (const d of activeDistricts) {
         const door = doorPositions.get(d.id);
         const nearMarker = Math.hypot(pState.x - d.x, pState.z - d.z) < 3.8;
@@ -1956,6 +2081,29 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
         if (nearMarker || nearDoor) {
           return { id: `enter:${d.id}`, name: d.name, actionLabel: d.actionLabel };
         }
+      }
+
+      // Check Billionaire Mega Mansion entrance portal if standing near (77.5, -45)
+      const nearMansion = Math.hypot(pState.x - 73.5, pState.z - (-42)) < 4.5 || Math.hypot(pState.x - 73.5, pState.z - (-31)) < 4.5;
+      if (nearMansion) {
+        const isOwner = propsRef.current.housing === 'ikoyi-mansion';
+        return {
+          id: 'enter:home',
+          name: isOwner ? 'Banana Island Billionaire Mega Mansion' : 'Banana Island Mega Mansion (For Sale)',
+          actionLabel: isOwner ? 'Enter Billionaire Mega Mansion (3D Interior)' : 'Tour Mansion / Dynasty 8 (₦650,000,000)',
+        };
+      }
+
+      // Check Physical Garages (Billionaire 8-Car Showroom or Standard Driveway Garage)
+      const nearMansionGarage = Math.hypot(pState.x - 88.5, pState.z - (-41.8)) < 5.0;
+      const nearStandardGarage = Math.hypot(pState.x - 70, pState.z - 52) < 4.5;
+      if (nearMansionGarage || nearStandardGarage) {
+        const isBillionaire = propsRef.current.housing === 'ikoyi-mansion';
+        return {
+          id: 'garage',
+          name: isBillionaire ? 'Banana Island 8-Car Showroom Garage' : 'Property Private Garage',
+          actionLabel: 'Manage Property Garage & Parked Cars [G / E]',
+        };
       }
       for (const a of ATM_SPOTS) {
         if (Math.hypot(pState.x - a.x, pState.z - a.z) < 2.0) {
@@ -1975,6 +2123,10 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       if (it.id.startsWith('enter:')) {
         const distId = it.id.slice(6) as LagosDistrict;
         enterInteriorRoom(distId);
+        return;
+      }
+      if (it.id === 'garage') {
+        p.onOpenGarage?.(p.housing);
         return;
       }
       if (it.id === 'int:exit') {
@@ -2010,7 +2162,9 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       else if (k === 'b') vehicleAction('seatbelt');
       else if (k === 'h') vehicleAction('lights');
       else if (k === 'q') vehicleAction('siren');
-      else if (k === 'e') {
+      else if (k === 'g') {
+        p.onOpenGarage?.(p.housing);
+      } else if (k === 'e') {
         const it = nearestInteractable();
         if (it) triggerInteraction(it);
       } else if (k === ' ' && !activeCar && pState.grounded) {
