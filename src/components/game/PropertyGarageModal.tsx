@@ -242,7 +242,9 @@ export const PropertyGarageModal: React.FC<PropertyGarageModalProps> = ({
                       <div className="my-1">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xl">
-                            {vehicle.category === 'super'
+                            {vehicle.category === 'motorcycle'
+                              ? '🏍️'
+                              : vehicle.category === 'super'
                               ? '🏎️'
                               : vehicle.category === 'suv'
                               ? '🚙'
@@ -342,7 +344,9 @@ export const PropertyGarageModal: React.FC<PropertyGarageModalProps> = ({
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <span className="text-lg">
-                          {vehicle.category === 'super'
+                          {vehicle.category === 'motorcycle'
+                            ? '🏍️'
+                            : vehicle.category === 'super'
                             ? '🏎️'
                             : vehicle.category === 'plane'
                             ? '✈️'

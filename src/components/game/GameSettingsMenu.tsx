@@ -332,7 +332,7 @@ export const GameSettingsMenu: React.FC<GameSettingsMenuProps> = (props) => {
   const netWorth = player.cash + player.bankBalance + (player.cryptoBalance || 0) + (player.homeSafeCash || 0) - (player.loanBalance || 0);
 
   return (
-    <div className="fixed inset-0 z-[80] flex flex-col select-none text-white animate-fade-in">
+    <div className="fixed inset-0 z-[150] flex flex-col select-none text-white animate-fade-in">
       {/* Darkened, blurred game world behind */}
       <div className="absolute inset-0 bg-gradient-to-b from-[#020617]/92 via-[#0b1220]/88 to-[#020617]/95 backdrop-blur-md" />
 

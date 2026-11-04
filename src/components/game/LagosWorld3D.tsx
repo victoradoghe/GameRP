@@ -1961,21 +1961,18 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
 
     const enterInteriorRoom = (districtId: LagosDistrict) => {
       if (activeCar) enterOrExit();
+      outdoorReturnPos = {
+        x: pState.x,
+        z: pState.z,
+        heading: pState.heading,
+      };
       setDoorFade(true);
       audioEngine.playClick();
 
       setTimeout(() => {
-        const distInfo = getDistrictsForCity(propsRef.current.activeCity || 'lagos').find(
-          (item) => item.id === districtId
-        );
         if (activeInterior) {
           disposeInterior(activeInterior);
         }
-        outdoorReturnPos = {
-          x: distInfo ? distInfo.x : pState.x,
-          z: distInfo ? distInfo.z + 1.2 : pState.z,
-          heading: 0,
-        };
 
         outdoorGroup.visible = false;
         activeInterior = buildBuildingInterior(districtId, propsRef.current.activeCity || 'lagos');
@@ -2088,9 +2085,9 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
       if (nearMansion) {
         const isOwner = propsRef.current.housing === 'ikoyi-mansion';
         return {
-          id: 'enter:home',
+          id: isOwner ? 'enter:home' : 'dynasty8_mansion',
           name: isOwner ? 'Banana Island Billionaire Mega Mansion' : 'Banana Island Mega Mansion (For Sale)',
-          actionLabel: isOwner ? 'Enter Billionaire Mega Mansion (3D Interior)' : 'Tour Mansion / Dynasty 8 (₦650,000,000)',
+          actionLabel: isOwner ? 'Enter Billionaire Mega Mansion (3D Interior)' : 'Purchase / Lease Estate (Dynasty 8)',
         };
       }
 
@@ -2120,6 +2117,10 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
 
     const triggerInteraction = (it: { id: string; name: string; actionLabel: string }) => {
       const p = propsRef.current;
+      if (it.id === 'dynasty8_mansion') {
+        p.onInteract('dynasty8_mansion');
+        return;
+      }
       if (it.id.startsWith('enter:')) {
         const distId = it.id.slice(6) as LagosDistrict;
         enterInteriorRoom(distId);

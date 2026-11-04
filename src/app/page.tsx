@@ -1500,6 +1500,7 @@ export default function LagosLifeGamePage() {
           isChatOpen ||
           isMapOpen ||
           isBennysOpen ||
+          isGarageOpen ||
           activeBuildingId !== null ||
           activePedName !== null ||
           isCustomizerOpen ||
@@ -1520,6 +1521,7 @@ export default function LagosLifeGamePage() {
           setIsChatOpen(false);
           setIsMapOpen(false);
           setIsBennysOpen(false);
+          setIsGarageOpen(false);
           setActiveBuildingId(null);
           setActivePedName(null);
           setIsCustomizerOpen(false);
@@ -1773,6 +1775,10 @@ export default function LagosLifeGamePage() {
       }
       if (locationId === 'int:home_garage' || locationId === 'garage') {
         setIsGarageOpen(true);
+        return;
+      }
+      if (locationId === 'dynasty8_mansion') {
+        openBuildingModal('lekki', 'realestate');
         return;
       }
 
