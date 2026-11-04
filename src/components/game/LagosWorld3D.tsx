@@ -2563,6 +2563,16 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
           }
 
           const isNight = night > 0.45;
+          const isBoosting = !locked && !!keys['shift'] && Math.abs(fwd) > 1.2;
+          if (car.model.nitroFlameMeshes) {
+            car.model.nitroFlameMeshes.forEach((flame, fi) => {
+              flame.visible = isBoosting;
+              if (isBoosting) {
+                const sc = 0.85 + Math.random() * 0.45;
+                flame.scale.set(sc, sc * (1.1 + Math.sin(t * 45 + fi) * 0.3), sc);
+              }
+            });
+          }
           car.model.tailMat.emissiveIntensity = braking ? 3 : carFlags.lights && isNight ? 1.1 : 0.45;
           car.model.headMat.emissiveIntensity = carFlags.lights && isNight ? 2.6 : 0.55;
           headlight.intensity = carFlags.lights && isNight ? 65 : 0;
@@ -3102,6 +3112,10 @@ export const LagosWorld3D: React.FC<LagosWorld3DProps> = (props) => {
             lightsOn: carFlags.lights,
             sirenOn: carFlags.siren,
             altitudeMeters: car ? Math.max(0, car.y) : 0,
+            pitchRad: car?.pitch ?? 0,
+            rollRad: car?.roll ?? 0,
+            headingDeg: car ? Math.round(((car.heading * 180) / Math.PI + 360) % 360) : 0,
+            isBoosting: !locked && !!keys['shift'],
           },
           police: police.filter((u) => u.active).map((u) => ({ x: u.x, z: u.z })),
           missionDistance,

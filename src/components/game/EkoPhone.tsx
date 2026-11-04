@@ -2,6 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import {
+  Wrench,
+  Camera,
+  Flame,
+  Star,
+  CheckCircle2,
+  RefreshCw,
+  Key,
+  Eye,
   Phone,
   PhoneCall,
   PhoneOff,
@@ -106,7 +114,8 @@ type PhoneApp =
   | 'realestate'
   | 'flights'
   | 'power'
-  | 'settings';
+  | 'settings'
+  | 'camera';
 
 export const EkoPhone: React.FC<EkoPhoneProps> = ({
   isOpen,
@@ -136,6 +145,68 @@ export const EkoPhone: React.FC<EkoPhoneProps> = ({
 }) => {
   const [activeApp, setActiveApp] = useState<PhoneApp>('home');
   const [wallpaperId, setWallpaperId] = useState<string>('aurora');
+
+  // Food delivery app state
+  const [foodFilter, setFoodFilter] = useState<string>('all');
+  const [activeDelivery, setActiveDelivery] = useState<{
+    item: (typeof FOOD_MENU)[0];
+    courierName: string;
+    courierVehicle: string;
+    progress: number;
+    etaSeconds: number;
+    completed: boolean;
+  } | null>(null);
+
+  // Real estate app state
+  const [realEstateFilter, setRealEstateFilter] = useState<string>('all');
+  const [inspectingProp, setInspectingProp] = useState<(typeof REAL_ESTATE)[0] | null>(null);
+
+  // Valet garage state
+  const [garageFilter, setGarageFilter] = useState<string>('all');
+
+  // Jobs app tabs
+  const [jobsTab, setJobsTab] = useState<'openings' | 'taxi' | 'police' | 'bullion'>('openings');
+
+  // Camera app state
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [cameraFlash, setCameraFlash] = useState<'auto' | 'on' | 'off'>('auto');
+  const [cameraZoom, setCameraZoom] = useState<number>(1);
+  const [photoCaption, setPhotoCaption] = useState<string>('');
+
+  // GPS category filter
+  const [gpsFilter, setGpsFilter] = useState<string>('all');
+
+  // Live ChopChop Food Delivery Progress Timer
+  useEffect(() => {
+    if (!activeDelivery || activeDelivery.completed) return;
+    const interval = setInterval(() => {
+      setActiveDelivery((prev) => {
+        if (!prev) return null;
+        if (prev.etaSeconds <= 1) {
+          audioEngine.playEatFood();
+          audioEngine.playCashEarn();
+          onUpdateVitals((v) => ({
+            ...v,
+            hunger: Math.min(100, v.hunger + prev.item.hungerRestore),
+            thirst: Math.min(100, (v.thirst || 80) + (prev.item.thirstRestore || 35)),
+            energy: Math.min(100, v.energy + prev.item.energyRestore),
+            stress: Math.max(0, v.stress - prev.item.stressRelief),
+          }));
+          onAddNotification(
+            'ChopChop Delivered 🍲',
+            `${prev.courierName} just delivered ${prev.item.name}! Vitals replenished.`,
+            'success'
+          );
+          return { ...prev, progress: 100, etaSeconds: 0, completed: true };
+        }
+        const nextSec = prev.etaSeconds - 1;
+        const totalDuration = (prev.item as any).prepTimeSec || 5;
+        const nextProgress = Math.min(95, Math.round(((totalDuration - nextSec) / totalDuration) * 100));
+        return { ...prev, etaSeconds: nextSec, progress: nextProgress };
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [activeDelivery, onUpdateVitals, onAddNotification]);
 
   // X (Twatter) splash loader + feed tabs
   const [xLoading, setXLoading] = useState<boolean>(false);
@@ -720,6 +791,12 @@ export const EkoPhone: React.FC<EkoPhoneProps> = ({
                 <div className="grid grid-cols-4 gap-2 pt-0.5">
                   {[
                     {
+                      id: 'camera' as PhoneApp,
+                      label: 'Camera',
+                      icon: <Camera size={20} />,
+                      bg: 'bg-rose-500/25 text-rose-300 border-rose-400/35',
+                    },
+                    {
                       id: 'flights' as PhoneApp,
                       label: 'Flights',
                       icon: <PlaneTakeoff size={20} />,
@@ -1137,69 +1214,247 @@ export const EkoPhone: React.FC<EkoPhoneProps> = ({
           {/* ==================== JOB CENTER ==================== */}
           {activeApp === 'jobs' && (
             <div className="flex flex-col flex-1 min-h-0">
-              {renderAppHeader('Job Center', 'text-blue-400')}
+              {renderAppHeader('Career & Dispatch CAD', 'text-blue-400')}
+
+              {/* Subtabs: Career Openings | Taxi Hailing | Police 911 CAD | Bullion Transport */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 mb-2 shrink-0 text-[10px] font-bold">
+                {[
+                  { id: 'openings', label: 'All Jobs' },
+                  { id: 'taxi', label: '🚖 Taxi Hail' },
+                  { id: 'police', label: '👮 911 CAD' },
+                  { id: 'bullion', label: '🏦 Bullion' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      audioEngine.playClick();
+                      setJobsTab(tab.id as any);
+                    }}
+                    className={`px-2.5 py-1 rounded-xl whitespace-nowrap transition-all ${
+                      jobsTab === tab.id
+                        ? 'bg-blue-500 text-white font-black'
+                        : 'bg-zinc-900 border border-white/10 text-zinc-300 hover:text-white'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Active Duty Status Card */}
+              {activeMission && (
+                <div className="mb-2 p-3 rounded-2xl bg-amber-500/15 border border-amber-400/50 space-y-1.5 shrink-0">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-mono font-black text-amber-300 uppercase">
+                      ON DUTY: {activeMission.title}
+                    </span>
+                    <button
+                      onClick={onStopMission}
+                      className="px-2 py-0.5 rounded-lg bg-rose-600 text-white text-[10px] font-bold hover:bg-rose-500"
+                    >
+                      Clock Out
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-zinc-200">{activeMission.objective}</p>
+                </div>
+              )}
+
               <div className="space-y-2.5 overflow-y-auto flex-1 pr-0.5">
-                {activeMission && (
-                  <div className="p-3 rounded-2xl bg-amber-500/15 border border-amber-400/50 space-y-1.5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-mono font-black text-amber-300">
-                        ON DUTY: {activeMission.title}
-                      </span>
-                      <button
-                        onClick={onStopMission}
-                        className="px-2 py-0.5 rounded-lg bg-rose-600 text-white text-[10px] font-bold"
-                      >
-                        Clock Out
-                      </button>
+                {jobsTab === 'taxi' && (
+                  <div className="space-y-2">
+                    <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-200 font-mono">
+                      🚖 LAGRIDE / BOLT DISPATCH QUEUE: Accept incoming passenger hail and follow glowing GPS beacon to pickup!
                     </div>
-                    <p className="text-[11px] text-zinc-200">{activeMission.objective}</p>
+                    {[
+                      {
+                        passenger: 'Folake Adeleke',
+                        rating: '4.9 ★ (88 trips)',
+                        route: 'Victoria Island ➔ Lekki Toll Plaza',
+                        fare: 18500,
+                        kind: 'taxi' as JobKind,
+                      },
+                      {
+                        passenger: 'Emeka Nwosu',
+                        rating: '4.8 ★ (140 trips)',
+                        route: 'Murtala Muhammed Airport ➔ Yaba Tech Hub',
+                        fare: 26000,
+                        kind: 'taxi' as JobKind,
+                      },
+                      {
+                        passenger: 'Senator Al-Hassan',
+                        rating: '5.0 ★ VIP',
+                        route: 'Abuja CBD ➔ Transcorp Hilton',
+                        fare: 45000,
+                        kind: 'taxi' as JobKind,
+                      },
+                    ].map((hail, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-2xl bg-zinc-900/90 border border-white/10 space-y-2"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-bold text-xs text-white">{hail.passenger}</h4>
+                            <span className="text-[10px] text-zinc-400 font-mono">{hail.rating}</span>
+                          </div>
+                          <span className="font-mono font-black text-xs text-emerald-400">
+                            +{formatNaira(hail.fare)}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-zinc-300 font-mono">{hail.route}</p>
+                        <button
+                          onClick={() => {
+                            audioEngine.playCashEarn();
+                            onStartMission(hail.kind);
+                            onClose();
+                            onAddNotification(
+                              'Passenger Accepted 🚖',
+                              `En route to pick up ${hail.passenger}. Follow the GPS beacon!`,
+                              'success'
+                            );
+                          }}
+                          className="w-full py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs"
+                        >
+                          Accept Ride &amp; Set GPS Beacon
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
 
-                {JOBS_DATABASE.map((job) => (
-                  <div
-                    key={job.id}
-                    className={`p-3 rounded-2xl bg-zinc-900/90 border space-y-1.5 ${
-                      job.category === 'criminal'
-                        ? 'border-rose-500/35'
-                        : job.category === 'whitelisted'
-                        ? 'border-sky-500/35'
-                        : 'border-white/8'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-lg shrink-0">{job.icon}</span>
-                        <div className="min-w-0">
-                          <h4 className="font-bold text-xs text-white truncate">{job.title}</h4>
-                          <p className="text-[10px] text-zinc-400 truncate">
-                            {job.company} • Req {job.reqCred} Cred
-                          </p>
-                        </div>
-                      </div>
-                      <span className="font-mono font-black text-[11px] text-emerald-400 shrink-0">
-                        +{formatNaira(job.salaryPerShift)}
-                      </span>
+                {jobsTab === 'police' && (
+                  <div className="space-y-2">
+                    <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-[10px] text-blue-200 font-mono">
+                      👮 EKO POLICE 911 CAD: Real-time emergency dispatches across Broad Street, Marina &amp; Third Mainland.
                     </div>
+                    {[
+                      {
+                        code: '10-90 ALARM',
+                        desc: 'Silent vault intrusion tripwire triggered at CBN Broad Street',
+                        priority: 'CODE 3 ALL UNITS',
+                        kind: 'police' as JobKind,
+                        reward: 35000,
+                      },
+                      {
+                        code: '10-99 PURSUIT',
+                        desc: 'Blacked-out sports coupe fleeing Marina Expressway at 200+ KM/H',
+                        priority: 'AIR-1 & INTERCEPTORS',
+                        kind: 'police' as JobKind,
+                        reward: 48000,
+                      },
+                    ].map((cad, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-2xl bg-zinc-900/90 border border-blue-500/30 space-y-2"
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className="font-mono font-black text-xs text-rose-400">{cad.code}</span>
+                          <span className="font-mono font-bold text-[9px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">
+                            {cad.priority}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-zinc-200 leading-snug">{cad.desc}</p>
+                        <button
+                          onClick={() => {
+                            audioEngine.playPoliceSiren();
+                            onStartMission(cad.kind);
+                            onClose();
+                            onAddNotification(
+                              'Code 3 Dispatched 🚓',
+                              `En route to ${cad.code}. Sirens authorized!`,
+                              'dispatch'
+                            );
+                          }}
+                          className="w-full py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs"
+                        >
+                          Respond Code 3 (+{formatNaira(cad.reward)})
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
-                    <p className="text-[11px] text-zinc-300 leading-snug">{job.description}</p>
+                {jobsTab === 'bullion' && (
+                  <div className="space-y-2">
+                    <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-[10px] text-emerald-200 font-mono">
+                      🏦 CBN CASH BULLION TRANSPORT: Escort high-value cash vans between Central Bank and commercial vault branches.
+                    </div>
+                    <div className="p-3.5 rounded-2xl bg-zinc-900 border border-emerald-500/30 space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-bold text-xs text-white">CBN Vault ➔ GTBank Marina Escort</h4>
+                          <span className="text-[10px] text-zinc-400 font-mono">Cargo: ₦60,000,000 Minted Bullion</span>
+                        </div>
+                        <span className="font-mono font-black text-xs text-emerald-400">+₦120,000</span>
+                      </div>
+                      <p className="text-[10px] text-zinc-300">
+                        Drive the Armored Bullion Van through heavy city traffic without letting Syndicate robbers breach the hull.
+                      </p>
+                      <button
+                        onClick={() => {
+                          audioEngine.playCashEarn();
+                          onStartMission('security' as JobKind);
+                          onClose();
+                          onAddNotification(
+                            'Bullion Escort Active 🏦',
+                            'Lead the Armored Cash Van to the delivery bank checkpoint.',
+                            'success'
+                          );
+                        }}
+                        className="w-full py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md"
+                      >
+                        Start Bullion Escort Shift
+                      </button>
+                    </div>
+                  </div>
+                )}
 
-                    <button
-                      onClick={() => handleStartJob(job)}
-                      className={`w-full py-1.5 rounded-xl text-xs font-bold transition-all ${
+                {jobsTab === 'openings' && (
+                  JOBS_DATABASE.map((job) => (
+                    <div
+                      key={job.id}
+                      className={`p-3 rounded-2xl bg-zinc-900/90 border space-y-1.5 ${
                         job.category === 'criminal'
-                          ? 'bg-rose-600 hover:bg-rose-500 text-white'
-                          : job.missionKind
-                          ? 'bg-teal-500 hover:bg-teal-400 text-black font-black'
-                          : 'bg-blue-600 hover:bg-blue-500 text-white'
+                          ? 'border-rose-500/35'
+                          : job.category === 'whitelisted'
+                          ? 'border-sky-500/35'
+                          : 'border-white/8'
                       }`}
                     >
-                      {job.missionKind
-                        ? 'Start 3D City Shift (GPS Route)'
-                        : 'Launch Studio / Arcade Shift'}
-                    </button>
-                  </div>
-                ))}
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-lg shrink-0">{job.icon}</span>
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-xs text-white truncate">{job.title}</h4>
+                            <p className="text-[10px] text-zinc-400 truncate">
+                              {job.company} • Req {job.reqCred} Cred
+                            </p>
+                          </div>
+                        </div>
+                        <span className="font-mono font-black text-[11px] text-emerald-400 shrink-0">
+                          +{formatNaira(job.salaryPerShift)}
+                        </span>
+                      </div>
+
+                      <p className="text-[11px] text-zinc-300 leading-snug">{job.description}</p>
+
+                      <button
+                        onClick={() => handleStartJob(job)}
+                        className={`w-full py-1.5 rounded-xl text-xs font-bold transition-all ${
+                          job.category === 'criminal'
+                            ? 'bg-rose-600 hover:bg-rose-500 text-white'
+                            : job.missionKind
+                            ? 'bg-teal-500 hover:bg-teal-400 text-black font-black'
+                            : 'bg-blue-600 hover:bg-blue-500 text-white'
+                        }`}
+                      >
+                        {job.missionKind
+                          ? 'Start 3D City Shift (GPS Route)'
+                          : 'Launch Studio / Arcade Shift'}
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -1208,23 +1463,57 @@ export const EkoPhone: React.FC<EkoPhoneProps> = ({
           {activeApp === 'garage' && (
             <div className="flex flex-col flex-1 min-h-0">
               {renderAppHeader('Valet & PDM Dealership', 'text-pink-400')}
+
+              {/* Category Filter Pills */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 mb-2 shrink-0 text-[10px] font-bold">
+                {[
+                  { id: 'all', label: 'All Fleet' },
+                  { id: 'super', label: '🏎️ Supercars' },
+                  { id: 'motorcycle', label: '🏍️ Motorcycles' },
+                  { id: 'plane', label: '✈️ Aircraft' },
+                  { id: 'transit', label: '🚌 Commercial' },
+                  { id: 'suv', label: '🚙 SUVs' },
+                  { id: 'sedan', label: '🚗 Sedans' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      audioEngine.playClick();
+                      setGarageFilter(tab.id);
+                    }}
+                    className={`px-2.5 py-1 rounded-xl whitespace-nowrap transition-all ${
+                      garageFilter === tab.id
+                        ? 'bg-pink-500 text-black font-black'
+                        : 'bg-zinc-900 border border-white/10 text-zinc-300 hover:text-white'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Fleet List */}
               <div className="space-y-2.5 overflow-y-auto flex-1 pr-0.5">
-                {VEHICLES_CATALOG.map((v) => {
+                {VEHICLES_CATALOG.filter(
+                  (v) => garageFilter === 'all' || v.category === garageFilter
+                ).map((v) => {
                   const isOwned = (player.ownedVehicles || []).includes(v.id);
                   return (
                     <div
                       key={v.id}
-                      className="p-3 rounded-2xl bg-zinc-900/90 border border-white/8 space-y-2"
+                      className="p-3.5 rounded-2xl bg-zinc-900/90 border border-white/10 space-y-2 hover:border-pink-500/30 transition-all"
                     >
                       <div className="flex justify-between items-start gap-2">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <div
-                            className="w-8 h-8 rounded-xl shrink-0 border border-white/20"
+                            className="w-9 h-9 rounded-xl shrink-0 border border-white/20 shadow-md flex items-center justify-center font-bold text-xs"
                             style={{ backgroundColor: v.color }}
-                          />
+                          >
+                            {v.category === 'plane' ? '✈️' : v.category === 'motorcycle' ? '🏍️' : '🚗'}
+                          </div>
                           <div className="min-w-0">
-                            <h4 className="font-bold text-xs text-white truncate">{v.name}</h4>
-                            <span className="text-[10px] font-mono text-zinc-400">
+                            <h4 className="font-extrabold text-xs text-white truncate">{v.name}</h4>
+                            <span className="text-[10px] font-mono text-zinc-400 block">
                               {v.plate} • {v.topSpeedKmh} KM/H
                             </span>
                           </div>
@@ -1232,24 +1521,112 @@ export const EkoPhone: React.FC<EkoPhoneProps> = ({
                         <span
                           className={`text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
                             isOwned
-                              ? 'bg-emerald-500/20 text-emerald-300'
-                              : 'bg-amber-500/20 text-amber-300'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                           }`}
                         >
                           {isOwned ? 'OWNED' : formatNaira(v.price)}
                         </span>
                       </div>
 
-                      <button
-                        onClick={() => handleBuyOrSpawnVehicle(v)}
-                        className={`w-full py-1.5 rounded-xl text-xs font-black transition-all ${
-                          isOwned
-                            ? 'bg-emerald-500 hover:bg-emerald-400 text-black'
-                            : 'bg-pink-600 hover:bg-pink-500 text-white'
-                        }`}
-                      >
-                        {isOwned ? 'Deliver Curbside (Valet)' : `Purchase (${formatNaira(v.price)})`}
-                      </button>
+                      {/* Real-Time Telemetry Gauges */}
+                      <div className="grid grid-cols-3 gap-1 text-[9px] font-mono text-zinc-300 bg-black/40 p-1.5 rounded-xl border border-white/5">
+                        <div className="flex items-center gap-1">
+                          <Fuel size={11} className="text-amber-400" />
+                          <span>{v.fuel ?? 100}% Fuel</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Wrench size={11} className="text-sky-400" />
+                          <span>{v.condition ?? 100}% Cond</span>
+                        </div>
+                        <div className="text-right text-teal-300 font-bold">
+                          {v.category === 'plane' ? 'RUNWAY 18L' : 'STREET VALET'}
+                        </div>
+                      </div>
+
+                      {/* Remote Vehicle Controls for Owned Fleet */}
+                      {isOwned ? (
+                        <div className="grid grid-cols-3 gap-1 pt-0.5">
+                          <button
+                            onClick={() => {
+                              audioEngine.playSeatbeltChime();
+                              onAddNotification(
+                                'Alarm Chirp 🔊',
+                                `${v.name} doors locked. Immobilizer active.`,
+                                'info'
+                              );
+                            }}
+                            className="py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] font-bold flex items-center justify-center gap-1 border border-white/10"
+                            title="Alarm & Lock"
+                          >
+                            <Key size={11} /> Lock
+                          </button>
+                          <button
+                            onClick={() => {
+                              audioEngine.playVehicleIgnition();
+                              onAddNotification(
+                                'Remote Start 🔑',
+                                `${v.name} engine ignition fired! Climate control on.`,
+                                'success'
+                              );
+                            }}
+                            className="py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-300 text-[10px] font-bold flex items-center justify-center gap-1 border border-white/10"
+                            title="Remote Engine Start"
+                          >
+                            <Zap size={11} /> Start
+                          </button>
+                          <button
+                            onClick={() => {
+                              audioEngine.playCashEarn();
+                              onSpawnVehicle(v.id);
+                              onClose();
+                              onAddNotification(
+                                'Valet Dispatched 📍',
+                                `${v.name} dropped right beside you on the road!`,
+                                'success'
+                              );
+                            }}
+                            className="py-1.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-black text-[10px] shadow-md flex items-center justify-center gap-1"
+                          >
+                            <Car size={11} /> Deliver
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            if (player.cash < v.price && player.bankBalance < v.price) {
+                              onAddNotification(
+                                'Insufficient Funds',
+                                `Need ${formatNaira(v.price)} at PDM Dealership.`,
+                                'warning'
+                              );
+                              return;
+                            }
+                            audioEngine.playCashEarn();
+                            if (player.cash >= v.price) {
+                              onUpdatePlayer((p) => ({
+                                ...p,
+                                cash: p.cash - v.price,
+                                ownedVehicles: [...(p.ownedVehicles || []), v.id],
+                              }));
+                            } else {
+                              onUpdatePlayer((p) => ({
+                                ...p,
+                                bankBalance: p.bankBalance - v.price,
+                                ownedVehicles: [...(p.ownedVehicles || []), v.id],
+                              }));
+                            }
+                            onAddNotification(
+                              'PDM Purchase 🏎️',
+                              `Purchased ${v.name}! Delivered to your Valet garage.`,
+                              'success'
+                            );
+                          }}
+                          className="w-full py-1.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-black text-xs shadow-md"
+                        >
+                          Buy from PDM ({formatNaira(v.price)})
+                        </button>
+                      )}
                     </div>
                   );
                 })}
@@ -2320,31 +2697,332 @@ export const EkoPhone: React.FC<EkoPhoneProps> = ({
             </div>
           )}
 
+          {/* ==================== CAMERA APP & SCREENSHOT ==================== */}
+          {activeApp === 'camera' && (
+            <div className="flex flex-col flex-1 min-h-0 bg-black text-white -mx-3.5 -my-1 px-3.5 py-1">
+              {renderAppHeader('Ultra HD Viewfinder', 'text-rose-400')}
+
+              {capturedPhoto ? (
+                /* Photo Preview & Share to X Screen */
+                <div className="flex-1 flex flex-col justify-between py-1 space-y-2 overflow-y-auto">
+                  <div className="rounded-2xl overflow-hidden border border-white/20 relative shadow-2xl">
+                    <img src={capturedPhoto} alt="Snapshot" className="w-full h-44 object-cover" />
+                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/70 text-[9px] font-mono text-emerald-400">
+                      HDR 4K SNAPSHOT
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-400 block">
+                      Share to 𝕏 (Twatter) Feed:
+                    </label>
+                    <input
+                      type="text"
+                      value={photoCaption}
+                      onChange={(e) => setPhotoCaption(e.target.value)}
+                      placeholder="Caption this Lagos moment... #LagosLife3D"
+                      className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-white/10 text-xs text-white placeholder-zinc-500 outline-none focus:border-rose-400"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      onClick={() => setCapturedPhoto(null)}
+                      className="py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-zinc-300"
+                    >
+                      Retake
+                    </button>
+                    <button
+                      onClick={() => {
+                        audioEngine.playCashEarn();
+                        const newTweet: TweetItem = {
+                          id: 't-cam-' + Date.now(),
+                          author: player.name,
+                          handle: '@' + player.name.toLowerCase().replace(/\s+/g, '_'),
+                          avatarColor: player.outfit.color || '#f43f5e',
+                          verified: true,
+                          badgeType: 'blue',
+                          content: photoCaption || 'Just captured this view in the city! 🔥 #LagosLife3D #GameRP',
+                          likes: 12,
+                          retweets: 4,
+                          replies: 1,
+                          views: '1.2K',
+                          mediaGradient: 'linear-gradient(135deg,#090d16 0%,#1e293b 100%)',
+                          mediaCaption: 'LIVE 3D VIEW • LAGOS SKYLINE',
+                          comments: [],
+                          timeAgo: 'Just now',
+                        };
+                        setTweets((prev) => [newTweet, ...prev]);
+                        setCapturedPhoto(null);
+                        setPhotoCaption('');
+                        setActiveApp('twitter');
+                        onAddNotification('Posted to 𝕏 📸', 'Your photo was shared with followers!', 'success');
+                      }}
+                      className="py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-black text-white shadow-lg"
+                    >
+                      Post to 𝕏 Feed
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Live Viewfinder */
+                <div className="flex-1 flex flex-col justify-between py-1">
+                  {/* Viewfinder Frame with Rule of Thirds Grid */}
+                  <div className="relative flex-1 rounded-2xl border-2 border-white/30 overflow-hidden flex items-center justify-center bg-zinc-950/40 backdrop-blur-xs">
+                    {/* Grid Overlay */}
+                    <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-30">
+                      <div className="border-r border-b border-white" />
+                      <div className="border-r border-b border-white" />
+                      <div className="border-b border-white" />
+                      <div className="border-r border-b border-white" />
+                      <div className="border-r border-b border-white" />
+                      <div className="border-b border-white" />
+                      <div className="border-r border-white" />
+                      <div className="border-r border-white" />
+                      <div />
+                    </div>
+
+                    {/* Viewfinder Center Target */}
+                    <div className="w-12 h-12 rounded-full border border-amber-400/80 flex items-center justify-center animate-pulse">
+                      <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    </div>
+
+                    {/* Top Controls: Flash & Specs */}
+                    <div className="absolute top-2 inset-x-3 flex justify-between items-center text-[10px] font-mono text-zinc-300">
+                      <button
+                        onClick={() => {
+                          audioEngine.playClick();
+                          setCameraFlash((f) => (f === 'auto' ? 'on' : f === 'on' ? 'off' : 'auto'));
+                        }}
+                        className="px-2 py-0.5 rounded bg-black/60 border border-white/10 uppercase"
+                      >
+                        ⚡ {cameraFlash}
+                      </button>
+                      <span className="px-2 py-0.5 rounded bg-black/60 border border-white/10 text-emerald-400">
+                        4K 60FPS
+                      </span>
+                    </div>
+
+                    {/* Zoom Levels */}
+                    <div className="absolute bottom-2 inset-x-0 flex justify-center gap-2">
+                      {[1, 2, 3].map((z) => (
+                        <button
+                          key={z}
+                          onClick={() => {
+                            audioEngine.playClick();
+                            setCameraZoom(z);
+                          }}
+                          className={`w-6 h-6 rounded-full text-[9px] font-mono font-bold flex items-center justify-center ${
+                            cameraZoom === z ? 'bg-amber-400 text-black' : 'bg-black/60 text-white'
+                          }`}
+                        >
+                          {z}x
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Bottom Shutter Controls */}
+                  <div className="pt-3 pb-1 flex items-center justify-around">
+                    <button
+                      onClick={() => setActiveApp('home')}
+                      className="text-xs font-semibold text-zinc-400 hover:text-white"
+                    >
+                      Cancel
+                    </button>
+
+                    {/* Big Circular Shutter Button */}
+                    <button
+                      onClick={() => {
+                        audioEngine.playCameraClick();
+                        const canvas = document.querySelector('canvas');
+                        if (canvas) {
+                          try {
+                            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                            setCapturedPhoto(dataUrl);
+                          } catch (err) {
+                            setCapturedPhoto('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="100%" height="100%" fill="%23090d16"/><text x="50%" y="50%" fill="white" font-size="16" text-anchor="middle">Lagos 3D Snapshot</text></svg>');
+                          }
+                        } else {
+                          setCapturedPhoto('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="100%" height="100%" fill="%23090d16"/><text x="50%" y="50%" fill="white" font-size="16" text-anchor="middle">Lagos 3D Snapshot</text></svg>');
+                        }
+                      }}
+                      className="w-14 h-14 rounded-full border-4 border-white flex items-center justify-center p-1 hover:scale-105 active:scale-95 transition-transform"
+                    >
+                      <div className="w-full h-full rounded-full bg-white" />
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        audioEngine.playClick();
+                        setActiveApp('twitter');
+                      }}
+                      className="text-xs font-semibold text-sky-400 hover:text-sky-300"
+                    >
+                      𝕏 Feed
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ==================== CHOPCHOP FOOD ==================== */}
           {activeApp === 'food' && (
             <div className="flex flex-col flex-1 min-h-0">
-              {renderAppHeader('ChopChop Delivery', 'text-amber-400')}
-              <div className="space-y-2 overflow-y-auto flex-1 pr-0.5">
-                {FOOD_MENU.map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-3 rounded-2xl bg-zinc-900/90 border border-white/8 space-y-1.5"
-                  >
-                    <div className="flex justify-between items-start gap-2">
-                      <h4 className="font-bold text-xs text-white">{item.name}</h4>
-                      <span className="font-mono font-black text-xs text-amber-300 shrink-0">
-                        {formatNaira(item.price)}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-zinc-400">{item.desc}</p>
-                    <button
-                      onClick={() => handleOrderFood(item)}
-                      className="w-full bg-amber-500 hover:bg-amber-400 text-black font-black py-1.5 rounded-xl text-xs"
-                    >
-                      Order (+{item.hungerRestore} Hunger / +{item.thirstRestore} Thirst)
-                    </button>
+              {renderAppHeader('ChopChop Express Delivery', 'text-amber-400')}
+
+              {/* Active Live Delivery Tracker Card */}
+              {activeDelivery && (
+                <div className="mb-2.5 p-3 rounded-2xl bg-amber-950/40 border border-amber-500/40 space-y-2 shrink-0 animate-fade-in">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-amber-300 flex items-center gap-1.5">
+                      <Flame size={13} className="text-amber-400 animate-pulse" />
+                      {activeDelivery.completed ? 'Order Delivered!' : 'Courier On The Way'}
+                    </span>
+                    <span className="font-mono text-[10px] font-bold text-zinc-300">
+                      {activeDelivery.completed ? 'ENJOY YOUR MEAL' : `ETA: ${activeDelivery.etaSeconds}s`}
+                    </span>
                   </div>
+
+                  {/* Visual Route Progress Bar */}
+                  <div className="relative h-2 rounded-full bg-zinc-800 overflow-hidden">
+                    <div
+                      className="h-full bg-linear-to-r from-amber-500 to-emerald-400 transition-all duration-1000"
+                      style={{ width: `${activeDelivery.progress}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-[10px] text-zinc-300">
+                    <span className="font-mono text-zinc-400">
+                      🏍️ {activeDelivery.courierName} ({activeDelivery.courierVehicle})
+                    </span>
+                    <span className="font-bold text-emerald-300">{activeDelivery.item.name}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Restaurant Category Tabs */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 mb-2 shrink-0 text-[10px] font-bold">
+                {[
+                  { id: 'all', label: 'All Eats', icon: '🍽️' },
+                  { id: 'shitta', label: 'Shitta Amala', icon: '🍲' },
+                  { id: 'the_place', label: 'The Place Lekki', icon: '🍛' },
+                  { id: 'mega_chicken', label: 'Mega Chicken', icon: '🍗' },
+                  { id: 'suya_spot', label: 'Suya Spot', icon: '🥩' },
+                  { id: 'kfc', label: 'KFC VI', icon: '🍟' },
+                  { id: 'quilox', label: 'Club Quilox', icon: '🍾' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      audioEngine.playClick();
+                      setFoodFilter(tab.id);
+                    }}
+                    className={`px-2.5 py-1 rounded-xl whitespace-nowrap transition-all flex items-center gap-1 ${
+                      foodFilter === tab.id
+                        ? 'bg-amber-500 text-black font-black shadow-md'
+                        : 'bg-zinc-900 border border-white/10 text-zinc-300 hover:text-white'
+                    }`}
+                  >
+                    <span>{tab.icon}</span>
+                    <span>{tab.label}</span>
+                  </button>
                 ))}
+              </div>
+
+              {/* Menu Dish Cards */}
+              <div className="space-y-2 overflow-y-auto flex-1 pr-0.5">
+                {FOOD_MENU.filter((item: any) => foodFilter === 'all' || item.restaurant === foodFilter).map(
+                  (item: any) => {
+                    const isBusy = !!(activeDelivery && !activeDelivery.completed);
+                    return (
+                      <div
+                        key={item.id}
+                        className="p-3 rounded-2xl bg-zinc-900/90 border border-white/8 space-y-2 hover:border-amber-400/30 transition-all"
+                      >
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-base">{item.icon || '🍲'}</span>
+                              <h4 className="font-bold text-xs text-white truncate">{item.name}</h4>
+                            </div>
+                            <span className="text-[10px] text-amber-400/90 font-mono block mt-0.5">
+                              {item.restaurantName || 'Lagos Eatery'} • {item.badge || '⚡ Fast'}
+                            </span>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="font-mono font-black text-xs text-amber-300 block">
+                              {formatNaira(item.price)}
+                            </span>
+                            <span className="text-[9px] text-zinc-400 font-mono">+₦500 delivery</span>
+                          </div>
+                        </div>
+
+                        <p className="text-[10px] text-zinc-300 leading-snug">{item.desc}</p>
+
+                        <div className="flex items-center gap-1.5 flex-wrap text-[9px] font-mono text-zinc-400">
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                            +{item.hungerRestore} Hunger
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 font-bold">
+                            +{item.thirstRestore || 35} Thirst
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold">
+                            -{item.stressRelief || 20} Stress
+                          </span>
+                          {item.calories && (
+                            <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300">
+                              {item.calories}
+                            </span>
+                          )}
+                        </div>
+
+                        <button
+                          disabled={isBusy}
+                          onClick={() => {
+                            const total = item.price + 500;
+                            if (player.cash < total && player.bankBalance < total) {
+                              onAddNotification(
+                                'Insufficient Funds',
+                                `Need ${formatNaira(total)} for meal + delivery fee.`,
+                                'warning'
+                              );
+                              return;
+                            }
+                            audioEngine.playCashEarn();
+                            if (player.cash >= total) {
+                              onUpdatePlayer((p) => ({ ...p, cash: p.cash - total }));
+                            } else {
+                              onUpdatePlayer((p) => ({ ...p, bankBalance: p.bankBalance - total }));
+                            }
+                            const prepSec = item.prepTimeSec || 4;
+                            setActiveDelivery({
+                              item,
+                              courierName: 'Musa Danladi',
+                              courierVehicle: 'Bajaj Boxer 🏍️',
+                              progress: 15,
+                              etaSeconds: prepSec,
+                              completed: false,
+                            });
+                            onAddNotification(
+                              'Order Placed 🛵',
+                              `Musa is picking up ${item.name} from ${item.restaurantName || 'kitchen'}.`,
+                              'info'
+                            );
+                          }}
+                          className={`w-full py-1.5 rounded-xl font-black text-xs transition-all ${
+                            isBusy
+                              ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                              : 'bg-amber-500 hover:bg-amber-400 text-black shadow-md'
+                          }`}
+                        >
+                          {isBusy ? 'Courier En Route...' : `Order Express (${formatNaira(item.price + 500)})`}
+                        </button>
+                      </div>
+                    );
+                  }
+                )}
               </div>
             </div>
           )}
@@ -2352,70 +3030,213 @@ export const EkoPhone: React.FC<EkoPhoneProps> = ({
           {/* ==================== DYNASTY 8 REAL ESTATE ==================== */}
           {activeApp === 'realestate' && (
             <div className="flex flex-col flex-1 min-h-0">
-              {renderAppHeader('Dynasty 8 Real Estate', 'text-indigo-400')}
-              <div className="space-y-2 overflow-y-auto flex-1 pr-0.5">
-                {REAL_ESTATE.map((prop) => {
+              {renderAppHeader('Dynasty 8 Luxury Real Estate', 'text-indigo-400')}
+
+              {/* Category Filter Pills */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 mb-2 shrink-0 text-[10px] font-bold">
+                {[
+                  { id: 'all', label: 'All Listings' },
+                  { id: 'penthouse', label: '👑 Penthouses' },
+                  { id: 'villa', label: '🏰 Mansions' },
+                  { id: 'condo', label: '💻 Founder Lofts' },
+                  { id: 'flat', label: '🏠 Studios' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      audioEngine.playClick();
+                      setRealEstateFilter(tab.id);
+                    }}
+                    className={`px-2.5 py-1 rounded-xl whitespace-nowrap transition-all ${
+                      realEstateFilter === tab.id
+                        ? 'bg-indigo-500 text-white font-black'
+                        : 'bg-zinc-900 border border-white/10 text-zinc-300 hover:text-white'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Property Listings */}
+              <div className="space-y-2.5 overflow-y-auto flex-1 pr-0.5">
+                {REAL_ESTATE.filter(
+                  (prop: any) => realEstateFilter === 'all' || prop.category === realEstateFilter
+                ).map((prop: any) => {
                   const isCurrent = player.housing === prop.id;
                   return (
                     <div
                       key={prop.id}
-                      className={`p-3 rounded-2xl bg-zinc-900/90 border space-y-1.5 ${
-                        isCurrent ? 'border-indigo-400' : 'border-white/8'
+                      className={`p-3.5 rounded-2xl bg-zinc-900/90 border space-y-2.5 transition-all ${
+                        isCurrent ? 'border-indigo-400 bg-indigo-950/25 shadow-lg' : 'border-white/10'
                       }`}
                     >
-                      <div className="flex justify-between items-start">
+                      <div className="flex justify-between items-start gap-2">
                         <div>
-                          <h4 className="font-bold text-xs text-white">{prop.name}</h4>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-mono px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-bold">
+                              {prop.badge || 'Residence'}
+                            </span>
+                            <span className="text-[10px] text-zinc-400 font-mono">
+                              {prop.district || 'Lagos'}
+                            </span>
+                          </div>
+                          <h4 className="font-extrabold text-xs text-white mt-0.5">{prop.name}</h4>
                           <span className="text-[10px] text-zinc-400">
-                            Comfort {prop.comfort}/100 • Req {prop.credReq} Cred
+                            Comfort {prop.comfort}/100 • Req {prop.credReq} Street Cred
                           </span>
                         </div>
-                        <span className="font-mono text-[11px] font-bold text-indigo-300">
-                          {prop.rent === 0 ? 'Free' : formatNaira(prop.rent)}
-                        </span>
+                        <div className="text-right shrink-0 font-mono">
+                          <span className="text-xs font-black text-indigo-300 block">
+                            {prop.rent === 0 ? 'Free' : `${formatNaira(prop.rent)}/mo`}
+                          </span>
+                          {prop.buyPrice > 0 && (
+                            <span className="text-[9px] text-zinc-400 block">
+                              Deed: {formatNaira(prop.buyPrice)}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
-                      {isCurrent ? (
-                        <div className="py-1 rounded-xl bg-indigo-500/20 text-indigo-200 text-center text-[11px] font-bold">
-                          Current Residence
+                      {/* Amenities Pills */}
+                      {prop.amenities && (
+                        <div className="flex flex-wrap gap-1 text-[9px] font-mono">
+                          {prop.amenities.map((am: string, i: number) => (
+                            <span
+                              key={i}
+                              className="px-2 py-0.5 rounded-md bg-zinc-800/80 border border-white/5 text-zinc-300"
+                            >
+                              {am}
+                            </span>
+                          ))}
                         </div>
-                      ) : (
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="grid grid-cols-2 gap-1.5 pt-0.5">
                         <button
                           onClick={() => {
-                            if (player.cash < prop.deposit) {
-                              onAddNotification(
-                                'Insufficient Cash',
-                                `Need ${formatNaira(prop.deposit)} deposit.`,
-                                'warning'
-                              );
-                              return;
-                            }
-                            if (vitals.streetCred < prop.credReq) {
-                              onAddNotification(
-                                'Cred Too Low',
-                                `Need ${prop.credReq} Street Cred.`,
-                                'warning'
-                              );
-                              return;
-                            }
-                            audioEngine.playCashEarn();
-                            onUpdatePlayer((prev) => ({
-                              ...prev,
-                              cash: prev.cash - prop.deposit,
-                              housing: prop.id as typeof prev.housing,
-                              rentAmount: prop.rent,
-                            }));
-                            onAddNotification('Dynasty 8', `Leased ${prop.name}!`, 'success');
+                            audioEngine.playClick();
+                            setInspectingProp(prop);
                           }}
-                          className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-1.5 rounded-xl text-xs"
+                          className="py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold flex items-center justify-center gap-1 border border-white/10"
                         >
-                          Lease ({formatNaira(prop.deposit)})
+                          <Eye size={12} /> 3D Virtual Tour
                         </button>
-                      )}
+
+                        {isCurrent ? (
+                          <div className="py-1.5 rounded-xl bg-indigo-500/25 border border-indigo-400 text-indigo-200 text-center text-xs font-bold flex items-center justify-center gap-1">
+                            <CheckCircle2 size={12} /> Current Home
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              if (player.cash < prop.deposit && player.bankBalance < prop.deposit) {
+                                onAddNotification(
+                                  'Insufficient Funds',
+                                  `Need ${formatNaira(prop.deposit)} deposit.`,
+                                  'warning'
+                                );
+                                return;
+                              }
+                              if (vitals.streetCred < prop.credReq) {
+                                onAddNotification(
+                                  'Cred Too Low',
+                                  `Need ${prop.credReq} Street Cred for this luxury address.`,
+                                  'warning'
+                                );
+                                return;
+                              }
+                              audioEngine.playCashEarn();
+                              if (player.cash >= prop.deposit) {
+                                onUpdatePlayer((p) => ({
+                                  ...p,
+                                  cash: p.cash - prop.deposit,
+                                  housing: prop.id as any,
+                                  rentAmount: prop.rent,
+                                }));
+                              } else {
+                                onUpdatePlayer((p) => ({
+                                  ...p,
+                                  bankBalance: p.bankBalance - prop.deposit,
+                                  housing: prop.id as any,
+                                  rentAmount: prop.rent,
+                                }));
+                              }
+                              onAddNotification(
+                                'Dynasty 8 Contract Signed 🏠',
+                                `Moved into ${prop.name}! Comfort ${prop.comfort}/100 active.`,
+                                'success'
+                              );
+                            }}
+                            className="py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-md"
+                          >
+                            Lease ({formatNaira(prop.deposit)})
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
               </div>
+
+              {/* 3D Property Inspection Floorplan Modal */}
+              {inspectingProp && (
+                <div className="absolute inset-0 z-30 bg-black/90 backdrop-blur-md p-4 flex flex-col justify-between animate-fade-in text-white rounded-3xl">
+                  <div className="space-y-3 overflow-y-auto">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-mono text-indigo-400 uppercase font-black">
+                        3D VIRTUAL ARCHITECTURAL INSPECTION
+                      </span>
+                      <button
+                        onClick={() => setInspectingProp(null)}
+                        className="p-1 rounded-full bg-zinc-800 text-zinc-300 hover:text-white"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+
+                    <h3 className="text-sm font-black text-white">{inspectingProp.name}</h3>
+                    <p className="text-[11px] text-zinc-300">{inspectingProp.district} • Comfort {inspectingProp.comfort}/100</p>
+
+                    {/* Architectural Floorplan Blueprint Simulation */}
+                    <div className="p-3 rounded-2xl bg-indigo-950/40 border border-indigo-400/40 space-y-2 font-mono text-[10px]">
+                      <div className="flex justify-between border-b border-indigo-500/20 pb-1">
+                        <span className="text-zinc-400">Master Bedroom:</span>
+                        <span className="text-emerald-300 font-bold">Biometric Cash Safe Included</span>
+                      </div>
+                      <div className="flex justify-between border-b border-indigo-500/20 pb-1">
+                        <span className="text-zinc-400">Power Security:</span>
+                        <span className="text-amber-300 font-bold">Automatic Generator Transfer Switch</span>
+                      </div>
+                      <div className="flex justify-between border-b border-indigo-500/20 pb-1">
+                        <span className="text-zinc-400">Security Perimeter:</span>
+                        <span className="text-sky-300 font-bold">Armed Guard Sentry + CCTV</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-zinc-400">Deed Purchase Price:</span>
+                        <span className="text-white font-black">{formatNaira(inspectingProp.buyPrice || 0)}</span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-zinc-900 border border-white/10 text-xs text-zinc-300 space-y-1">
+                      <p className="font-bold text-white">Owner Privileges:</p>
+                      <p className="text-[10px] text-zinc-400">
+                        • Safe protects your cash against arrest and death.
+                        • Zero stress drain while resting inside your residence.
+                        • Quick teleport spawn point anytime from the City Map [M].
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setInspectingProp(null)}
+                    className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-bold text-xs text-white"
+                  >
+                    Close Virtual Tour
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

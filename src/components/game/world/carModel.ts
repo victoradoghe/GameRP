@@ -15,6 +15,7 @@ export interface CarModel {
   contrailGroup?: THREE.Group;
   fanMeshes?: THREE.Mesh[];
   strobeMat?: THREE.MeshStandardMaterial;
+  nitroFlameMeshes?: THREE.Mesh[];
   radius: number;
 }
 
@@ -307,6 +308,15 @@ function buildMotorcycle(color: string, castShadow = true): CarModel {
 
   group.add(steerPivot);
   frontWheels.push(steerPivot);
+  const nitroFlameMeshes: THREE.Mesh[] = [];
+  const flameMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+  const motoFlame = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.32, 8), flameMat);
+  motoFlame.rotation.x = -Math.PI / 2 + 0.32;
+  motoFlame.position.set(0.22, 0.42, -0.74);
+  motoFlame.visible = false;
+  group.add(motoFlame);
+  nitroFlameMeshes.push(motoFlame);
+
 
   return {
     group,
@@ -315,6 +325,7 @@ function buildMotorcycle(color: string, castShadow = true): CarModel {
     paintMat: paint,
     tailMat,
     headMat,
+    nitroFlameMeshes,
     radius: 1.05,
   };
 }
@@ -478,12 +489,21 @@ export function buildCar(category: VehicleCategory, color: string, castShadow = 
     group.add(plate, pBand);
   }
 
-  // Dual Chrome Exhaust Tips
+  // Dual Chrome Exhaust Tips & Nitrous Boost Flame Cones
+  const nitroFlameMeshes: THREE.Mesh[] = [];
+  const flameMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
   for (const sx of [1, -1]) {
     const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.18, 12), chrome);
     exhaust.rotation.x = Math.PI / 2;
     exhaust.position.set(sx * d.w * 0.29, d.ride + 0.08, -d.l / 2 - 0.12);
     group.add(exhaust);
+
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.38, 8), flameMat);
+    flame.rotation.x = -Math.PI / 2;
+    flame.position.set(sx * d.w * 0.29, d.ride + 0.08, -d.l / 2 - 0.32);
+    flame.visible = false;
+    group.add(flame);
+    nitroFlameMeshes.push(flame);
   }
 
   // 3D Interior Cabin (Visible through Tinted Glass!)
@@ -756,6 +776,7 @@ export function buildCar(category: VehicleCategory, color: string, castShadow = 
     headMat,
     barRed,
     barBlue,
+    nitroFlameMeshes,
     radius: Math.max(d.w, d.l) / 2 - 0.3,
   };
 }

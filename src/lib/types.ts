@@ -93,6 +93,10 @@ export interface VehicleTelemetry {
   lightsOn: boolean;
   sirenOn: boolean;
   altitudeMeters?: number;
+  pitchRad?: number;
+  rollRad?: number;
+  headingDeg?: number;
+  isBoosting?: boolean;
 }
 
 export interface OwnedVehicle {
